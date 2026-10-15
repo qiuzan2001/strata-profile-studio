@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Strata Profile Studio</title>
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="top">
+    <div class="top-row">
+      <h1 class="brand">
+        <img class="brand-mark" src="/static/favicon.svg" alt="" width="26" height="26">
+        <span>Strata Profile Studio</span>
+      </h1>
+      <span id="pill" class="pill pill-idle" role="status"><span class="dot" aria-hidden="true"></span><span id="pill-text">Connecting…</span></span>
+      <button id="theme-btn" class="btn btn-ghost" type="button" aria-label="Theme: system. Click to change.">Theme: system</button>
+    </div>
+    <nav class="tabs" aria-label="Views" id="tabs">
+      <a class="tab" href="#live" data-view="live">Live</a>
+      <a class="tab" href="#reports" data-view="reports">Reports</a>
+      <a class="tab" href="#compare" data-view="compare">Compare</a>
+      <a class="tab" href="#tune" data-view="tune">Tune</a>
+      <a class="tab" href="#settings" data-view="settings">Settings</a>
+    </nav>
+  </header>
+
+  <div id="banner" class="banner" role="status" aria-live="polite" hidden></div>
+  <a id="flow-strip" class="flow-strip" href="#tune" hidden></a>
+
+  <main id="main" class="page" tabindex="-1">
+    <noscript><p class="empty">The Studio page needs JavaScript. Nothing is loaded from other sites.</p></noscript>
+    <section id="view-live" class="view" hidden></section>
+    <section id="view-reports" class="view" hidden></section>
+    <section id="view-compare" class="view" hidden></section>
+    <section id="view-tune" class="view" hidden></section>
+    <section id="view-settings" class="view" hidden></section>
+  </main>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <dialog id="key-dialog" class="dialog">
+    <form method="dialog" id="key-form">
+      <h2>This Studio needs a key</h2>
+      <p>The Studio was started with <code>--key</code>. Enter that key to continue. It is kept for this browser tab only.</p>
+      <p id="key-error" class="error-text" hidden></p>
+      <label class="field">Key
+        <input id="key-input" type="password" autocomplete="off" spellcheck="false">
+      </label>
+      <div class="row">
+        <button class="btn btn-primary" type="submit">Continue</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="confirm-dialog" class="dialog">
+    <form method="dialog" id="confirm-form">
+      <h2 id="confirm-title">Tune this PC now?</h2>
+      <p id="confirm-text"></p>
+      <div class="row">
+        <button class="btn" value="cancel" type="submit">Cancel</button>
+        <button class="btn btn-primary" value="ok" type="submit" id="confirm-ok">Tune this PC</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/static/vendor/chart-4.4.1.umd.js"></script>
+  <script src="/static/charts.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
