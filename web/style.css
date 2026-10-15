@@ -318,3 +318,15 @@ tr.pending td { background: var(--warn-bg); }
 .field { min-width: 0; }
 .row > .field { flex: 1 1 220px; }
 .field select { width: 100%; text-overflow: ellipsis; }
+
+/* ---- what to look at first, folds, notes ---------------------------- */
+.lookat { border-left: 4px solid var(--accent); background: var(--surface-2); }
+.lookat-title { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-muted); margin-bottom: 6px; }
+.lookat p { margin: 0; line-height: 1.5; }
+.lookat p + p { margin-top: 6px; }
+.floor-note { display: block; font-size: .8rem; color: var(--ink-muted); margin-top: 2px; }
+details.fold > summary { cursor: pointer; font-weight: 700; font-size: .98rem; }
+details.fold > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+details.fold[open] > summary { margin-bottom: 10px; }
+.legend-note { font-style: italic; }
+#confirm-text { white-space: pre-line; }

@@ -95,13 +95,11 @@
           ctx.setLineDash([4, 3]);
         }
         ctx.stroke();
-        if (ring.kind === 'kept') {
-          ctx.setLineDash([]);
-          ctx.fillStyle = pal.ink;
-          ctx.font = `600 11px ${pal.font}`;
-          ctx.textAlign = 'center';
-          ctx.fillText('kept', pt.x, pt.y - 16);
-        }
+        ctx.setLineDash([]);
+        ctx.fillStyle = pal.ink;
+        ctx.font = `600 11px ${pal.font}`;
+        ctx.textAlign = 'center';
+        ctx.fillText(ring.kind === 'kept' ? 'kept' : 'best', pt.x, pt.y - 16);
       }
       ctx.restore();
     },
@@ -208,9 +206,15 @@
         ds.pointBorderWidth = 1;
       } else {
         // The ghost dataset marks an empty slot with a faint stub, so the slot can still be hovered.
-        ds.backgroundColor = st.ghost ? withAlpha(pal.muted, 0.22) : pal[st.token];
-        ds.borderColor = pal.surface;
-        ds.borderWidth = h.kind === 'stack' && !st.ghost ? 2 : 0;
+        if (st.hollow) {
+          ds.backgroundColor = 'rgba(0, 0, 0, 0)';
+          ds.borderColor = pal.muted;
+          ds.borderWidth = 1;
+        } else {
+          ds.backgroundColor = st.ghost ? withAlpha(pal.muted, 0.22) : pal[st.token];
+          ds.borderColor = pal.surface;
+          ds.borderWidth = h.kind === 'stack' && !st.ghost ? 2 : 0;
+        }
       }
     }
   }
@@ -243,9 +247,16 @@
     }));
     const total = spec.rows.map((r) => (r ? spec.groups.reduce((a, k) => a + (Number(r[k]) || 0), 0) : 0));
     const top = percent ? 100 : Math.max(0, ...total);
-    const empty = spec.rows.map((r, i) => (total[i] > 0 ? null : (percent ? 100 : top * 0.04 || 1)));
+    const hollow = spec.hollow || [];
+    // An empty slot keeps a faint full-height stub so it can be hovered; a "hollow" one (a sample that has no
+    // split by design) is only a thin outline, so it does not look like data.
+    const empty = spec.rows.map((r, i) => (total[i] > 0 || hollow[i] ? null : (percent ? 100 : top * 0.04 || 1)));
     if (empty.some((v) => v != null)) {
       sets.push({ label: '', data: empty, studio: { ghost: true }, stack: 's' });
+    }
+    const thin = spec.rows.map((r, i) => (total[i] === 0 && hollow[i] ? (percent ? 4 : (top * 0.04 || 1)) : null));
+    if (thin.some((v) => v != null)) {
+      sets.push({ label: '', data: thin, studio: { ghost: true, hollow: true }, stack: 's' });
     }
     return sets;
   }
