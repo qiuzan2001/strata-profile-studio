@@ -60,11 +60,14 @@ class SweepLines(unittest.TestCase):
         self.assertAlmostEqual(value(st, "0.35")["median"], 94.55)
         self.assertEqual(value(st, "0.35")["min"], 94.0)
 
-    def test_default_comes_from_the_settings_before_and_is_printed_like_the_sweep(self):
-        res = calibparse.parse(LINES[1:3], {"pcie_frac": "0.55", "spec_min_p": "0.50"})
-        self.assertEqual(step(res, "pcie_frac")["default"], "0.55")
-        res = calibparse.parse([LINES[3]], {"spec_min_p": "0.50"})
-        self.assertEqual(step(res, "spec_min_p")["default"], "0.5")     # the sweep printed 0.5
+    def test_default_is_the_products_and_was_is_what_the_engine_had(self):
+        res = calibparse.parse(LINES[1:3], {"pcie_frac": "0.35", "spec_min_p": "0.70"})
+        st = step(res, "pcie_frac")
+        self.assertEqual((st["default"], st["was"]), ("0.55", "0.35"))
+        res = calibparse.parse([LINES[3]], {"spec_min_p": "0.70"})
+        st = step(res, "spec_min_p")
+        self.assertEqual((st["default"], st["was"]), ("0.5", "0.7"))      # printed as the sweep printed them
+        self.assertIsNone(step(calibparse.parse(LINES[1:3]), "pcie_frac")["was"])
 
 
 class RestartLines(unittest.TestCase):
@@ -103,7 +106,7 @@ class SummaryLines(unittest.TestCase):
 
     def test_defaults_line(self):
         res = calibparse.parse(LINES[:11] + ["  [ok] tuned for this PC: the default settings are already the fastest "
-                                             "here (87.0 tok/s)"], {"pcie_frac": "0.55"})
+                                             "here (87.0 tok/s)"])
         self.assertEqual(res["outcome"], "defaults")
         self.assertEqual(res["tok_s"], 87.0)
         self.assertEqual(step(res, "pcie_frac")["kept"], "0.55")
@@ -117,7 +120,7 @@ class SummaryLines(unittest.TestCase):
 
     def test_kept_differs_from_best_when_the_summary_has_no_pcie_frac(self):
         lines = LINES[1:3] + ["  [ok] tuned for this PC: --pool-workers 5 (93.1 tok/s)"]
-        res = calibparse.parse(lines, {"pcie_frac": "0.55"})
+        res = calibparse.parse(lines, {"pcie_frac": "0.35"})
         st = step(res, "pcie_frac")
         self.assertEqual(st["best"], "0.35")
         self.assertEqual(st["kept"], "0.55")                          # within 3% of the default: not kept
@@ -126,6 +129,48 @@ class SummaryLines(unittest.TestCase):
     def test_nothing_is_an_error(self):
         res = calibparse.parse(["what is this", "", "  ...", None, 5])
         self.assertEqual(len(res["steps"]), 4)
+        self.assertIsNone(res["outcome"])
+
+
+class RealRun(unittest.TestCase):
+    """The lines of the real one-click tune (817 s) on 2026-10-15: the engine ran with 0.35 / 0.70 / 1/160/0.97
+    before it, the sweeps found 0.35 and 0.7 best, and the result line named only the adapt flags."""
+
+    def setUp(self):
+        import json
+        doc = json.loads((support.ROOT / "tests" / "fixtures" / "real_tune.json").read_text())
+        self.lines = doc["lines"]
+        self.res = calibparse.parse(self.lines, {"pcie_frac": "0.35", "spec_min_p": "0.70", "pool_workers": "7",
+                                                 "adapt": "1/160/0.97"})
+
+    def test_summary(self):
+        self.assertEqual(self.res["outcome"], "tuned")
+        self.assertEqual(self.res["tok_s"], 93.3)
+        self.assertEqual(self.res["summary"], "--adapt-every 1, --adapt-swaps 80, --adapt-decay 0.97")
+
+    def test_the_sweeps_winners_are_best_but_not_kept(self):
+        pcie = step(self.res, "pcie_frac")
+        self.assertEqual((pcie["best"], pcie["kept"], pcie["default"], pcie["was"]), ("0.35", "0.55", "0.55", "0.35"))
+        floor = step(self.res, "spec_min_p")
+        self.assertEqual((floor["best"], floor["kept"], floor["default"], floor["was"]), ("0.7", "0.5", "0.5", "0.7"))
+        self.assertEqual(value(pcie, "0.35")["rounds"], [75.0, 74.9, 76.5])
+        self.assertEqual(value(pcie, "0.35")["median"], 75.0)
+
+    def test_workers_and_tier(self):
+        w = step(self.res, "pool_workers")
+        self.assertEqual([(v["value"], v["median"]) for v in w["values"]],
+                         [("7", 74.9), ("5", 75.2), ("4", 74.4), ("2", 63.4)])
+        self.assertEqual((w["default"], w["best"], w["kept"]), ("7", "5", "7"))
+        t = step(self.res, "adapt")
+        self.assertEqual((t["default"], t["was"], t["best"], t["kept"]), ("default", "1/160/0.97", "1/80/0.97", "1/80/0.97"))
+
+    def test_startup_chatter_of_the_engine_is_ignored(self):
+        self.assertTrue(any(ln.startswith("[strata]") for ln in self.lines))
+        self.assertEqual(self.res["failed_starts"], [])
+
+    def test_while_running_nothing_is_kept_yet(self):
+        res = calibparse.parse(self.lines[:30], {"pcie_frac": "0.35"})
+        self.assertIsNone(step(res, "pcie_frac")["kept"])
         self.assertIsNone(res["outcome"])
 
 

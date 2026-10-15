@@ -118,6 +118,29 @@ class HappyPath(FlowCase):
         self.assertTrue(doc["studio"]["key_set"])
 
 
+class RealTune(FlowCase):
+    """The real run's output: the sweeps found 0.35 and 0.7, the result named only the adapt flags."""
+
+    def test_the_winners_that_were_not_kept_are_not_marked_kept(self):
+        self.make(tune_outcome="real", tune_secs=0.5)
+        self.fake.settings_on = True
+        for r in self.fake.settings_doc["settings"]:             # the engine ran with the earlier tune's values
+            r["loaded_now"] = {"pcie_frac": "0.35", "spec_min_p": "0.70"}.get(r["id"], r["loaded_now"])
+        s = self.studio()
+        snap = self.run_flow(s)
+        self.assertEqual(snap["state"], "succeeded", snap["error"])
+        steps = {c["key"]: c for c in snap["candidates"]["steps"]}
+        self.assertEqual((steps["pcie_frac"]["best"], steps["pcie_frac"]["kept"], steps["pcie_frac"]["default"],
+                          steps["pcie_frac"]["was"]), ("0.35", "0.55", "0.55", "0.35"))
+        self.assertEqual((steps["spec_min_p"]["best"], steps["spec_min_p"]["kept"], steps["spec_min_p"]["default"],
+                          steps["spec_min_p"]["was"]), ("0.7", "0.5", "0.5", "0.7"))
+        self.assertEqual(steps["adapt"]["kept"], "1/80/0.97")
+        self.assertEqual(snap["tok_s"], 93.3)
+        rows = {r["flag"]: r for r in snap["settings"]["rows"]}
+        self.assertEqual((rows["--pcie-frac"]["before"], rows["--pcie-frac"]["after"]), ("0.35", None))
+        self.assertEqual((rows["--spec-min-p"]["before"], rows["--spec-min-p"]["after"]), ("0.70", "0.5"))
+
+
 class Failures(FlowCase):
     def test_tune_failed_still_loads_the_model_then_ends_failed(self):
         self.make(tune_outcome="failed")

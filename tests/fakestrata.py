@@ -58,6 +58,16 @@ CHANGES = [
     {"flag": "--adapt-decay", "before": None, "before_loaded": None, "after": "0.97", "changed": True},
 ]
 
+REAL = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_tune.json").read_text())
+REAL_CHANGES = [
+    {"flag": "--pcie-frac", "before": "0.35", "before_loaded": "0.35", "after": None, "changed": True},
+    {"flag": "--spec-min-p", "before": "0.70", "before_loaded": "0.70", "after": "0.5", "changed": True},
+    {"flag": "--pool-workers", "before": "7", "before_loaded": "7", "after": None, "changed": False},
+    {"flag": "--adapt-every", "before": "1", "before_loaded": None, "after": "1", "changed": False},
+    {"flag": "--adapt-swaps", "before": "160", "before_loaded": None, "after": "80", "changed": True},
+    {"flag": "--adapt-decay", "before": "0.97", "before_loaded": None, "after": "0.97", "changed": False},
+]
+
 ENGINE = {"model": "swift-1.5-iq3_s", "max_context": 262144, "context": 262144, "kv_resident": 32768,
           "expert_slots": 3880, "expert_cache_mib": 7586, "pool_workers": 7, "pcie_frac": "0.55", "spec_min_p": "0.50"}
 
@@ -280,7 +290,10 @@ class FakeStrata:
         h._reply(200, {"status": "started"})
 
     def _run_tune(self):
-        script = TUNE_LINES if self.tune_outcome == "done" else FAIL_LINES
+        if self.tune_outcome == "real":              # the real run's output: the sweeps' winners were not kept
+            script = REAL["lines"]
+        else:
+            script = TUNE_LINES if self.tune_outcome == "done" else FAIL_LINES
         pause = self.tune_secs / max(1, len(script))
         for line in script:
             time.sleep(pause)
@@ -289,7 +302,11 @@ class FakeStrata:
         with self.lock:
             t = self.tune
             t["elapsed_s"] = round(time.time() - t["started_at"], 1)
-            if self.tune_outcome == "done":
+            if self.tune_outcome == "real":
+                rep = {"summary": REAL["summary"], "tok_s": REAL["tok_s"], "changes": copy.deepcopy(REAL_CHANGES)}
+                t.update(state="done", returncode=0, report=rep)
+                self.tune_done_pending_reload = self.reload_503s
+            elif self.tune_outcome == "done":
                 rep = {"summary": "--pcie-frac 0.35, --spec-min-p 0.70, --adapt-every 1, --adapt-swaps 160, "
                                   "--adapt-decay 0.97 (96.6 tok/s)", "tok_s": 96.6}
                 if self.status_changes:

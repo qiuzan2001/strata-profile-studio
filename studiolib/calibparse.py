@@ -28,6 +28,9 @@ RE_START_FAILED = re.compile(r"^\s*the engine did not start for (.+?): (.*) - th
 RE_TUNED = re.compile(r"tuned for this PC: (.*?)(?: \(([\d.]+) tok/s\))?\s*$")
 RE_SETTING = re.compile(r"(--[a-z-]+) ([^,\s]+)")
 RE_FAILED = re.compile(r"^\s*\[!\]\s+the tuning did not finish \((.*)\): the default settings stay$")
+# What the calibration measures against: it restarts the engine with the product's own values, whatever the run
+# before it had (tools/calibrate.py `apply(base_args, {})`): the engine's PCIe share and setup's --spec-min-p.
+PRODUCT_DEFAULTS = {"pcie_frac": "0.55", "spec_min_p": "0.5"}
 DEFAULTS_TEXT = "the default settings are already the fastest here"
 
 
@@ -58,13 +61,15 @@ def _sorted_values(step: dict) -> list:
     return vals
 
 
-def parse(lines, defaults: dict | None = None) -> dict:
+def parse(lines, was: dict | None = None) -> dict:
     """The calibration's candidates and outcome from `lines`.
 
-    `defaults`: what the engine ran with before the tune ({"pcie_frac": "0.55", "spec_min_p": "0.50", ...}); the
-    sweeps' default candidates come from it.  The workers' default is the first count measured, the tier's is
-    "default"."""
-    defaults = defaults or {}
+    Per step: `default` is what the calibration measured against (the product's values for the PCIe share and the
+    draft floor, the first worker count measured, "default" for the tier); `was` is what the engine ran with before
+    this tune (`was`, {"pcie_frac": "0.35", ...}), which can differ; `best` is the sweep's or restart's winner by
+    median; `kept` comes from the tune's result line only (None until it has been printed): the confirm step keeps a
+    value only when it beats the default by 3%, so `best` and `kept` can differ."""
+    was = was or {}
     steps = {k: {"key": k, "label": label, "kind": kind, "default": None, "best": None, "kept": None, "_values": {}}
              for k, label, kind in STEP_ORDER}
     steps["adapt"]["default"] = "default"
@@ -139,14 +144,15 @@ def parse(lines, defaults: dict | None = None) -> dict:
             rs = v["rounds"]
             if v["median"] is None and rs:
                 v["median"], v["min"], v["max"] = statistics.median(rs), min(rs), max(rs)
-        default = st["default"]
-        if key in defaults and defaults[key] is not None:
-            default = str(defaults[key])
+        default = PRODUCT_DEFAULTS.get(key, st["default"])
         value_keys = [v["value"] for v in values]
-        for vk in value_keys:                          # print the default as the sweep printed it ("0.55")
+        was_v = was.get(key)
+        was_v = None if was_v is None else str(was_v)
+        for vk in value_keys:                          # print them as the sweep printed them ("0.5", not "0.50")
             if default is not None and same_value(vk, default):
                 default = vk
-                break
+            if was_v is not None and same_value(vk, was_v):
+                was_v = vk
         best = st["best"]
         if best is None and kind == "restart":
             rated = [v for v in values if v["median"] is not None]
@@ -164,8 +170,8 @@ def parse(lines, defaults: dict | None = None) -> dict:
                 if kept is not None and same_value(vk, kept):
                     kept = vk
                     break
-        out_steps.append({"key": key, "label": label, "kind": kind, "default": default, "best": best, "kept": kept,
-                          "values": values})
+        out_steps.append({"key": key, "label": label, "kind": kind, "default": default, "was": was_v, "best": best,
+                          "kept": kept, "values": values})
     return {"steps": out_steps, "failed_starts": failed_starts, "summary": summary, "tok_s": tok_s,
             "outcome": outcome, "error": error}
 

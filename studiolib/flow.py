@@ -405,7 +405,7 @@ class Flow:
             merged = calibparse.merge_lines(self.rec["tune_lines"], new_lines, MAX_LINES)
             self.rec["tune_lines"] = merged
             self.rec["lines"] = merged
-            cand = calibparse.parse(merged, self._defaults_from_settings())
+            cand = calibparse.parse(merged, self._was_from_settings())
             self.rec["candidates"] = cand
             self.rec["summary"], self.rec["tok_s"] = cand["summary"], cand["tok_s"]
 
@@ -438,24 +438,40 @@ class Flow:
             self.rec["tune_s"] = self._stage("tune")["elapsed_s"]
         self.poller.tune_by_studio = False
 
-    def _defaults_from_settings(self) -> dict:
-        """The sweeps' default candidates: what the engine ran with before the tune."""
+    def _was_from_settings(self) -> dict:
+        """What the engine ran with before this tune (the calibration's `was`): the loaded values from
+        /profile/settings captured after stage 2, else the before report's settings table."""
         cap = self.rec["_cap"]
-        out = {}
+        out: dict = {}
         rows = {r.get("name"): r for r in _d(cap.get("settings_before")).get("settings") or [] if isinstance(r, dict)}
-        for flag, key in (("--pcie-frac", "pcie_frac"), ("--spec-min-p", "spec_min_p")):
-            r = rows.get(flag)
-            if r and r.get("loaded_now") is not None:
-                out[key] = str(r["loaded_now"])
-        if "pcie_frac" not in out or "spec_min_p" not in out:
-            rep = self.reports.get(self.rec["before_report"]) if self.rec.get("before_report") else None
-            if rep:
-                for r in rep["settings"]["rows"]:
-                    key = {"--pcie-frac": "pcie_frac", "--spec-min-p": "spec_min_p"}.get(r["flag"])
-                    if key and key not in out:
-                        v = r.get("loaded") if r.get("loaded") is not None else r.get("config")
-                        if v is not None:
-                            out[key] = str(v)
+
+        def val(row):
+            if not row:
+                return None
+            v = row.get("loaded_now") if row.get("loaded_now") is not None else row.get("run_config")
+            return None if v is None else str(v)
+        for flag, key in (("--pcie-frac", "pcie_frac"), ("--spec-min-p", "spec_min_p"), ("--pool-workers", "pool_workers")):
+            if val(rows.get(flag)) is not None:
+                out[key] = val(rows[flag])
+        tier = [val(rows.get(f)) for f in ("--adapt-every", "--adapt-swaps", "--adapt-decay")] if rows else None
+        rep = None
+        if self.rec.get("before_report") and (len(out) < 3 or tier is None):
+            try:
+                rep = self.reports.get(self.rec["before_report"])
+            except Exception:                        # noqa: BLE001 - the report may be gone
+                rep = None
+        if rep:
+            by = {r["flag"]: r for r in rep["settings"]["rows"]}
+            for flag, key in (("--pcie-frac", "pcie_frac"), ("--spec-min-p", "spec_min_p"),
+                              ("--pool-workers", "pool_workers")):
+                r = by.get(flag)
+                v = r and (r.get("loaded") if r.get("loaded") is not None else r.get("config"))
+                if key not in out and v is not None:
+                    out[key] = str(v)
+            if tier is None:
+                tier = [(by.get(f) or {}).get("config") for f in ("--adapt-every", "--adapt-swaps", "--adapt-decay")]
+        if tier is not None and (rep or rows):
+            out["adapt"] = "/".join(tier) if all(tier) else "default"
         return out
 
     # --- stage 4
