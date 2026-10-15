@@ -294,7 +294,7 @@ class Checks(Base):
         self.assertIn("frame-ancestors 'none'", h["content-security-policy"])
         self.assertEqual(h["x-content-type-options"], "nosniff")
         self.assertEqual(h["referrer-policy"], "no-referrer")
-        for name, ctype in (("app.js", "javascript"), ("charts.js", "javascript"), ("insights.js", "javascript"), ("style.css", "text/css"),
+        for name, ctype in (("app.js", "javascript"), ("charts.js", "javascript"), ("style.css", "text/css"),
                             ("favicon.svg", "image/svg+xml"), ("vendor/chart-4.4.1.umd.js", "javascript")):
             st, h, _ = request(s, "GET", "/static/" + name)
             self.assertEqual(st, 200, name)

@@ -22,7 +22,7 @@ from .strata import StrataError
 
 MAX_POST = 64 * 1024
 STATIC = {"app.js": "text/javascript; charset=utf-8", "charts.js": "text/javascript; charset=utf-8",
-          "insights.js": "text/javascript; charset=utf-8", "style.css": "text/css; charset=utf-8",
+          "style.css": "text/css; charset=utf-8",
           "favicon.svg": "image/svg+xml",
           "vendor/chart-4.4.1.umd.js": "text/javascript; charset=utf-8"}
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "

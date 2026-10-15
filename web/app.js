@@ -8,7 +8,6 @@
   'use strict';
 
   const SC = window.StudioCharts;
-  const SI = window.StudioInsights;
   const VIEWS = ['live', 'reports', 'compare', 'tune', 'settings'];
   const STAGE_COUNT = 6;
 
@@ -135,21 +134,6 @@
   }
 
   function setHidden(node, hidden) { if (node) node.hidden = !!hidden; }
-
-  // The calm box at the top of a view: `res` is {title, lines} from insights.js.
-  function lookBox() {
-    return el('section', { class: 'card lookat', 'aria-label': 'What to look at first' });
-  }
-
-  function setLook(host, res) {
-    if (!host) return;
-    clear(host);
-    const lines = (res && res.lines) || [];
-    host.hidden = lines.length === 0;
-    if (lines.length === 0) return;
-    host.append(el('h2', { class: 'lookat-title', text: res.title || 'What to look at first' }),
-      ...lines.map((l) => el('p', { text: l })));
-  }
 
   // A card with a canvas, an optional legend host, a "Table" toggle and a slot for a replacement message.
   function chartCard(title, kind, opts) {
@@ -627,7 +611,6 @@
       el('div', { class: 'segmented', role: 'group', 'aria-label': 'Samples shown' }, winBtns),
       el('label', { class: 'check', for: 'live-tune' }, tuneBox, 'Show the calibration’s requests'));
 
-    L.look = lookBox();
     L.empty = el('p', { class: 'empty', text: 'No request with its breakdown yet. Send one to Strata (chat, API or a profile run); it appears here within a second.' });
     L.charts = el('div', { class: 'stack' });
 
@@ -638,14 +621,12 @@
     L.l3 = chartCard('Decode window', 'stack', { yTitle: 'ms per window' });
     L.l4 = chartCard('Prompt read', 'stack', { yTitle: 'share of GPU time', percent: true });
 
-    L.l4note = el('span', { class: 'legend-note', text: 'No split: seen before the Studio started (thin outline)' });
-    L.l4.legend.append(L.l4note);
-    L.table = el('details', { class: 'card fold' }, el('summary', { text: 'Last 20 requests' }));
+    L.table = el('section', { class: 'card' }, el('div', { class: 'card-head' }, el('h3', { text: 'Last 20 requests' })));
     L.tableHost = el('div');
     L.table.append(L.tableHost);
 
     L.charts.append(L.l1.el, L.l2.el, el('div', { class: 'grid-2' }, L.l3.el, L.l4.el), L.table);
-    root.append(L.look, tiles, controls, L.empty, L.charts);
+    root.append(tiles, controls, L.empty, L.charts);
     L.built = true;
   }
 
@@ -671,7 +652,6 @@
 
     setHidden(L.empty, vis.length > 0);
     setHidden(L.charts, vis.length === 0);
-    setLook(L.look, vis.length ? SI.live(vis, { profileOff }) : null);
     if (vis.length === 0) return;
 
     const labels = vis.map((s) => `${s.after_load ? '↻' : ''}#${s.seq}`);
@@ -695,8 +675,6 @@
     } else {
       L.l3.note(null);
       L.l4.note(null);
-      const hollow = vis.map((s) => !s.prompt_groups_ms && s.source === 'history' && s.read !== 0);
-      L.l4.legend.hidden = !hollow.some(Boolean);
       L.l3.set({
         labels, groups: SC.DECODE_GROUPS, rows: vis.map((s) => s.window_ms || null),
         tips: vis.map((s) => {
@@ -706,7 +684,7 @@
         }),
       }, true);
       L.l4.set({
-        labels, groups: SC.PROMPT_GROUPS, rows: vis.map((s) => s.prompt_groups_ms || null), hollow,
+        labels, groups: SC.PROMPT_GROUPS, rows: vis.map((s) => s.prompt_groups_ms || null),
         tips: vis.map((s) => {
           if (!s.prompt_groups_ms) {
             let why = 'no prefill timing line';
@@ -757,9 +735,8 @@
     R.findings = el('section', { class: 'card' });
     R.detail.append(R.head, R.r1.el, R.r2.el, R.r3a.el, R.r3b.el, R.findings);
     R.detailEmpty = el('p', { class: 'empty', text: 'Select a report to see its charts.' });
-    R.look = lookBox();
 
-    root.append(R.look, el('div', { class: 'split' },
+    root.append(el('div', { class: 'split' },
       el('div', { class: 'stack' },
         el('section', { class: 'card' },
           el('h2', { text: 'Profile reports' }),
@@ -848,7 +825,6 @@
       S.selected = first ? first.id : null;
     }
     for (const r of R.reports) R.list.append(reportCard(r));
-    setLook(R.look, SI.reports(R.reports, R.lastDoc || null));
     R.compareBtn.disabled = S.checked.length !== 2;
     loadSelectedDetail();
   }
@@ -926,8 +902,6 @@
   function renderReportDetail(doc) {
     const m = doc.machine || {};
     const p = doc.params || {};
-    R.lastDoc = doc;
-    setLook(R.look, SI.reports(R.reports || [], doc));
     clear(R.head);
     const machineLine = [
       Array.isArray(m.gpu) ? m.gpu.join(', ') : m.gpu, isNum(m.gpu_vram_mib) ? `${num(m.gpu_vram_mib / 1024, 1)} GiB` : null,
@@ -1023,14 +997,13 @@
     C.warn = el('div', { class: 'banner' });
     C.warn.hidden = true;
     C.verdicts = el('section', { class: 'card' });
-    C.look = lookBox();
     C.c1 = chartCard('Decode tok/s by request kind', 'group', { yTitle: 'tok/s' });
     C.c2 = chartCard('Prompt tok/s by size', 'group', { yTitle: 'tok/s' });
     C.c3 = chartCard('Decode window split', 'stack', { yTitle: 'ms per window' });
     C.c4 = chartCard('Expert cache hit rate by request kind', 'group', { yTitle: 'hit rate %', yMax: 100 });
-    C.rows = el('details', { class: 'card fold' });
+    C.rows = el('section', { class: 'card' });
     C.settings = el('section', { class: 'card' });
-    C.body = el('div', { class: 'stack' }, C.warn, C.verdicts, C.look,
+    C.body = el('div', { class: 'stack' }, C.warn, C.verdicts,
       el('div', { class: 'grid-2' }, C.c1.el, C.c2.el), el('div', { class: 'grid-2' }, C.c3.el, C.c4.el), C.rows, C.settings);
     root.append(C.controls, C.empty, C.error, C.body);
     C.built = true;
@@ -1127,7 +1100,6 @@
       el('span', null, el('span', { text: v.text }),
         v.floor_note ? el('span', { class: 'floor-note', text: v.floor_note }) : null)))) :
       el('p', { class: 'muted', text: 'Nothing to compare in these two reports.' }));
-    setLook(C.look, SI.compare(cmp));
 
     // C1/C2/C3/C4 from the two reports
     const kinds2 = [];
@@ -1174,7 +1146,7 @@
 
     // the table of every row, grouped
     clear(C.rows);
-    C.rows.append(el('summary', { text: `Every number (${(cmp.rows || []).length} rows)` }));
+    C.rows.append(el('h2', { text: 'Every number' }));
     const GROUP_NAME = { decode: 'Decode', prompt: 'Prompt read', agent: 'Agent turn' };
     const order = { decode: 0, prompt: 1, agent: 2 };
     const sorted = (cmp.rows || []).map((r, i) => [r, i]).sort((x, y) => (order[x[0].group] ?? 9) - (order[y[0].group] ?? 9) || x[1] - y[1]).map((x) => x[0]);
@@ -1243,11 +1215,10 @@
       el('p', { class: 'muted small', text: 'Grey dots are single rounds, the blue dot is the median. A green ring marks the value the tune kept (from its result line). A dashed ring marks the best of the sweep when it was not kept: the confirm step found no 3% gain, so the engine’s default stayed.' }),
       el('p', { class: 'muted small', text: '“(default)” is the product default; “(was)” is the value the engine ran with before this tune.' }),
       el('div', { class: 'grid-2' }, T.cards.map((c) => c.card.el)), T.failed);
-    T.look = lookBox();
     T.summary = el('section', { class: 'card' });
     T.settings = el('section', { class: 'card' });
     T.tunes = el('section', { class: 'card' });
-    root.append(T.look, T.top, T.summary, T.settings, T.stages, T.t1, T.tunes);
+    root.append(T.top, T.stages, T.t1, T.summary, T.settings, T.tunes);
     T.built = true;
   }
 
@@ -1403,31 +1374,8 @@
     const failed = (f.candidates && f.candidates.failed_starts) || [];
     T.failed.textContent = failed.length ? `The engine did not start for: ${failed.map(asLine).join('; ')}. Those candidates were dropped.` : '';
 
-    renderTuneLook(f);
     renderTuneSummary(f);
     renderTunes();
-  }
-
-  // The look box leads with the flow's own before/after verdict, so it needs /api/compare once per pair.
-  function renderTuneLook(f) {
-    const pair = f.state === 'succeeded' && f.compare && f.compare.a && f.compare.b ? `${f.compare.a}|${f.compare.b}` : null;
-    if (!pair) {
-      setLook(T.look, SI.tune(f, null));
-      return;
-    }
-    if (T.cmpKey === pair && T.cmp) {
-      setLook(T.look, SI.tune(f, T.cmp));
-      return;
-    }
-    setLook(T.look, SI.tune(f, null));
-    if (T.cmpAsking === pair) return;
-    T.cmpAsking = pair;
-    api(`/api/compare?a=${encodeURIComponent(f.compare.a)}&b=${encodeURIComponent(f.compare.b)}`).then((cmp) => {
-      T.cmpKey = pair;
-      T.cmp = cmp;
-      T.cmpAsking = null;
-      if (S.flow === f || (S.flow && S.flow.id === f.id)) setLook(T.look, SI.tune(S.flow, cmp));
-    }).catch(() => { T.cmpAsking = null; });
   }
 
   async function renderTuneSummary(f) {
@@ -1495,9 +1443,8 @@
 
   function buildSettings() {
     const root = $('view-settings');
-    ST.look = lookBox();
     ST.host = el('section', { class: 'card' });
-    root.append(ST.look, ST.host);
+    root.append(ST.host);
     ST.built = true;
   }
 
@@ -1505,7 +1452,6 @@
     if (!ST.built) return;
     clear(ST.host);
     const s = S.settings;
-    setLook(ST.look, SI.settings(s && s.rows));
     ST.host.append(el('h2', { text: 'Speed settings' }));
     if (!s || !(s.rows || []).length) {
       ST.host.append(el('p', { class: 'empty', text: s ? 'No settings to show: Strata is unreachable and no --config was given.' : 'Loading settings…' }));
