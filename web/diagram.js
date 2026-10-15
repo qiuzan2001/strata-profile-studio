@@ -107,9 +107,10 @@
         el('div', { class: 'blk-head' }, sum.state),
         el('div', { class: 'blk-value' }, sum.tps, sum.tpsUnit),
         sum.limit, sum.bar, sum.why, sum.legend);
+      // one row, in the order the experts travel: disk -> RAM -> CPU (or) -> PCIe -> VRAM -> GPU
       const grid = el('div', { class: 'pc' },
-        block('disk', 'Disk'), link('disk', 'h'), block('ram', 'RAM'), link('pcie', 'h'), block('vram', 'VRAM'),
-        link('card', 'h'), block('gpu', 'GPU'), link('bus', 'v'), block('cpu', 'CPU'), sum.node);
+        block('disk', 'Disk'), link('disk', 'h'), block('ram', 'RAM'), link('bus', 'h'), block('cpu', 'CPU'),
+        link('pcie', 'h'), block('vram', 'VRAM'), link('card', 'h'), block('gpu', 'GPU'), sum.node);
       refs['l-card'].value.textContent = '';
       refs['l-card'].label.textContent = '';
       refs['l-disk'].label.textContent = '';
@@ -141,24 +142,26 @@
       setNum(refs.ram.big, isNum(ramU) ? ramU / 2 ** 30 : null, (v) => v.toFixed(1));
       setText(refs.ram.unit, isNum(ramT) ? `of ${(ramT / 2 ** 30).toFixed(1)} GiB` : 'GiB');
       setScale(refs.ram.meterFill, isNum(ramU) && isNum(ramT) ? ramU / ramT : null);
-      setText(refs.ram.l1, isNum(eng.arena_mib) ? `experts held in RAM ${S.num(eng.arena_mib / 1024, 1)} GiB` : '');
+      setText(refs.ram.l1, isNum(eng.arena_mib) ? `experts ${S.num(eng.arena_mib / 1024, 1)} GiB` : '');
       setText(refs.ram.l2, isNum(ramU) && isNum(ramT) ? `${S.num((ramT - ramU) / 2 ** 30, 1)} GiB available` : '');
       refs.ram.spark.update(hist.ram_used, ramT);
       // ---- CPU
-      setText(refs.cpu.name, st.cpu_name ? `CPU · ${st.cpu_name.replace(/ \d+-Core Processor$/, '').replace(/^AMD |^Intel\(R\) Core\(TM\) /, '')}` : 'CPU');
+      setText(refs.cpu.name, 'CPU');
+      refs.cpu.node.title = st.cpu_name || '';
       setNum(refs.cpu.big, now.cpu, (v) => v.toFixed(0));
       setText(refs.cpu.unit, '% busy');
       setScale(refs.cpu.meterFill, isNum(now.cpu) ? now.cpu / 100 : null);
-      setText(refs.cpu.l1, [st.cores ? `${st.cores} cores` : null, st.threads ? `${st.threads} threads` : null, isNum(eng.pool_workers) ? `${eng.pool_workers} pool workers` : null].filter(Boolean).join(' · '));
-      setText(refs.cpu.l2, win && win.window_ms && isNum(win.ms_per_window) ? `CPU experts ${S.num(win.window_ms['CPU experts'], 1)} of ${S.num(win.ms_per_window, 1)} ms per window` : '');
+      setText(refs.cpu.l1, [st.cores ? `${st.cores} cores` : null, st.threads ? `${st.threads} threads` : null].filter(Boolean).join(' · '));
+      setText(refs.cpu.l2, isNum(eng.pool_workers) ? `${eng.pool_workers} pool workers` : '');
       refs.cpu.spark.update(hist.cpu, 100);
       // ---- memory bus (the one estimate): CPU-expert share of the window x the pool's measured expert rate
       const generating = live.state === 'generating';
       const cpuShare = win && win.window_ms && isNum(win.ms_per_window) && win.ms_per_window > 0 ? (win.window_ms['CPU experts'] || 0) / win.ms_per_window : null;
       const busEst = probe && isNum(cpuShare) ? cpuShare * probe.cpu_gbs : null;
       setNum(refs['l-bus'].value, generating ? busEst : (isNum(busEst) ? 0 : null), (v) => `≈ ${v.toFixed(1)} GB/s`);
-      setText(refs['l-bus'].ceil, probe ? `${generating ? '' : `last decode ≈ ${S.num(busEst, 1)} GB/s · `}pool measured ${S.num(probe.cpu_gbs, 1)} GB/s` : 'no probe line in the engine log');
-      setScale(refs['l-bus'].fill, generating && probe ? busEst / probe.cpu_gbs : 0, 'x');
+      setText(refs['l-bus'].ceil, probe ? `of ${S.num(probe.cpu_gbs, 1)} GB/s measured` : 'no probe line in the log');
+      refs['l-bus'].node.title = probe ? `The one estimate on this page: the CPU-expert share of the last decode window × the ${S.num(probe.cpu_gbs, 1)} GB/s the CPU pool reads experts at (the engine's PCIe-share probe).${isNum(busEst) ? ` Last decode ≈ ${S.num(busEst, 1)} GB/s.` : ''}` : '';
+      setScale(refs['l-bus'].fill, generating && probe ? busEst / probe.cpu_gbs : 0, 'y');
       setClass(refs['l-bus'].node, 'flowing', generating);
       // ---- PCIe
       const gen = now.gpu_pcie_gen, gmax = now.gpu_pcie_gen_max, width = now.gpu_pcie_width;
@@ -167,7 +170,8 @@
       const nominal = isNum(gmax) && isNum(width) ? ({ 1: 0.25, 2: 0.5, 3: 0.985, 4: 1.969, 5: 3.938, 6: 7.563 }[gmax] || null) * width : null;
       const ceilGB = probe ? probe.link_gbs : nominal;
       setNum(refs['l-pcie'].value, isNum(rx) ? rx + (tx || 0) : null, (v) => `${S.mbps(v)}`);
-      setText(refs['l-pcie'].ceil, ceilGB ? `of ${S.num(ceilGB, 1)} GB/s ${probe ? 'measured link' : 'nominal'} · rx ${S.mbps(rx)} tx ${S.mbps(tx)}` : `rx ${S.mbps(rx)} · tx ${S.mbps(tx)}`);
+      setText(refs['l-pcie'].ceil, ceilGB ? `of ${S.num(ceilGB, 1)} GB/s ${probe ? 'measured' : 'nominal'}` : '');
+      refs['l-pcie'].node.title = `to the card ${S.mbps(rx)} · from the card ${S.mbps(tx)}`;
       setScale(refs['l-pcie'].fill, ceilGB && isNum(rx) ? (rx + (tx || 0)) / (ceilGB * 1000) : 0, 'y');
       setClass(refs['l-pcie'].node, 'flowing', isNum(rx) && rx > 200);
       // ---- VRAM
@@ -175,13 +179,15 @@
       setNum(refs.vram.big, isNum(vu) ? vu / 2 ** 30 : null, (v) => v.toFixed(1));
       setText(refs.vram.unit, isNum(vt) ? `of ${(vt / 2 ** 30).toFixed(1)} GiB` : 'GiB');
       setScale(refs.vram.meterFill, isNum(vu) && isNum(vt) ? vu / vt : null);
-      setText(refs.vram.l1, isNum(eng.expert_cache_mib) ? `expert cache ${S.num(eng.expert_cache_mib / 1024, 1)} GiB · ${S.int(eng.expert_slots)} experts` : '');
+      setText(refs.vram.l1, isNum(eng.expert_cache_mib) ? `experts ${S.num(eng.expert_cache_mib / 1024, 1)} GiB (${S.int(eng.expert_slots)})` : '');
       const lowVram = isNum(eng.vram_free_mib) && eng.vram_free_mib < 512;
-      setText(refs.vram.l2, isNum(eng.vram_free_mib) ? `${S.int(eng.vram_free_mib)} MiB free after load${lowVram ? ' ⚠ below 512' : ''}` : '');
+      setText(refs.vram.l2, isNum(eng.vram_free_mib) ? `${S.int(eng.vram_free_mib)} MiB free${lowVram ? ' ⚠ under 512' : ''}` : '');
+      refs.vram.l2.title = lowVram ? 'less than 512 MiB of VRAM free after the load: the driver can page GPU memory to RAM (Strata warns in its log)' : '';
       setClass(refs.vram.l2, 'warn', lowVram);
       refs.vram.spark.update(hist.gpu_mem_used, vt);
       // ---- GPU
-      setText(refs.gpu.name, st.gpu_name ? `GPU · ${st.gpu_name.replace(/^NVIDIA GeForce /, '')}` : 'GPU');
+      setText(refs.gpu.name, 'GPU');
+      refs.gpu.node.title = st.gpu_name || '';
       setNum(refs.gpu.big, now.gpu_util, (v) => v.toFixed(0));
       setText(refs.gpu.unit, '% busy');
       setScale(refs.gpu.meterFill, isNum(now.gpu_util) ? now.gpu_util / 100 : null);

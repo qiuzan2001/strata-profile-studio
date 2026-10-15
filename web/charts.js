@@ -320,8 +320,8 @@
       s.appendChild(lab);
     }
     // the rolling median, oldest to newest; broken where the points have a gap (p.cut)
-    if (o.median && pts.length >= 5) {
-      const sorted = pts.slice().sort((a, b) => a.x - b.x);
+    if (o.median && pts.filter((p) => !p.calib).length >= 5) {
+      const sorted = pts.filter((p) => !p.calib).sort((a, b) => a.x - b.x);
       const k = Math.max(3, Math.round(sorted.length / 10));
       let d = '';
       sorted.forEach((p, i) => {
@@ -331,7 +331,7 @@
       s.appendChild(svg('path', { class: 'median-line', d }));
     }
     for (const p of pts) {
-      const gm = svg('g', { class: `pt ${p.hl ? 'hl' : ''} ${p.out ? 'out' : ''} ${p.run ? 'in-run' : ''}` });
+      const gm = svg('g', { class: `pt ${p.hl ? 'hl' : ''} ${p.out ? 'out' : ''} ${p.run ? 'in-run' : ''} ${p.calib ? 'calib' : ''}` });
       if (p.out) gm.appendChild(svg('circle', { class: 'out-ring', cx: X(p.x), cy: Y(p.y), r: 8 }));
       gm.appendChild(S.kindMark(p.kind, X(p.x), Y(p.y), p.hl ? 5.5 : 4.2));
       gm.appendChild(svg('circle', { class: 'hit', cx: X(p.x), cy: Y(p.y), r: 9 }));

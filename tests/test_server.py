@@ -578,7 +578,7 @@ class Vendored(unittest.TestCase):
         self.assertEqual(sum(t.count("el('table'") for t in js.values()), 1)
         now = js["now.js"]
         self.assertEqual(now.count("S.table("), 1)
-        self.assertIn("if (ui.table) grid.appendChild(tableCard(A, win));", now)
+        self.assertIn("if (ui.table) grid.appendChild(tableCard(A, winAll));", now)
 
 
 if __name__ == "__main__":

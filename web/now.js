@@ -29,6 +29,9 @@
   let built = false, diagramNode = null;
   const holders = {};
 
+  // the calibration's own requests (and the Studio's reload request) are not the user's: drawn, never counted
+  const isCalib = (s) => !!(s.run && (s.run.kind === 'tune' || s.run.kind === 'reload'));
+
   function windowSamples(all) {
     return ui.n >= 300 ? all : all.slice(-ui.n);
   }
@@ -116,13 +119,14 @@
     pts.forEach((p, i) => { p.cut = ui.x === 'order' && i > 0 && isNum(p.s.seen_at) && isNum(pts[i - 1].s.seen_at) && p.s.seen_at - pts[i - 1].s.seen_at > 300; });
     // outliers: beyond the 10th (or 90th) percentile of their own kind, with at least 8 of that kind
     const byKind = {};
-    for (const p of pts) (byKind[p.s.kind] = byKind[p.s.kind] || []).push(p.y);
+    for (const p of pts) if (!isCalib(p.s)) (byKind[p.s.kind] = byKind[p.s.kind] || []).push(p.y);
+    const nCalib = pts.filter((p) => isCalib(p.s)).length;
     const lim = {};
     for (const [k, v] of Object.entries(byKind)) if (v.length >= 8) lim[k] = yo.better === 'higher' ? S.quantile(v, 0.1) : S.quantile(v, 0.9);
-    const last = all[all.length - 1];
+    const last = [...all].reverse().find((s) => !isCalib(s));
     const points = pts.map((p) => ({
-      x: p.x, y: p.y, cut: p.cut, kind: p.s.kind, hl: p.s === last,
-      out: isNum(lim[p.s.kind]) && (yo.better === 'higher' ? p.y < lim[p.s.kind] : p.y > lim[p.s.kind]),
+      x: p.x, y: p.y, cut: p.cut, kind: p.s.kind, hl: p.s === last, calib: isCalib(p.s),
+      out: !isCalib(p.s) && isNum(lim[p.s.kind]) && (yo.better === 'higher' ? p.y < lim[p.s.kind] : p.y > lim[p.s.kind]),
       run: !!p.s.run,
       onclick: () => S.go(`#now/r/${p.s.seq}`),
       tip: () => [`${S.KIND_LABEL[p.s.kind]} · ${p.s.late ? 'before the Studio started' : S.clock(p.s.seen_at, 'sec')}`,
@@ -155,12 +159,13 @@
     const legend = el('div', { class: 'legend' },
       S.KINDS.map((k) => el('span', { class: 'lg', title: S.KIND_ABOUT[k] }, S.kindIcon(k), `${S.KIND_LABEL[k]} (${(byKind[k] || []).length})`)),
       el('span', { class: 'lg' }, el('i', { class: 'sw ring' }), `outlier for its kind (${outs})`),
+      nCalib ? el('span', { class: 'lg', title: 'requests the calibration sent while it measured: not counted anywhere else on this page' }, el('i', { class: 'sw calib-mark' }), `calibration's own (${nCalib})`) : null,
       ui.x === 'time' || ui.x === 'order' ? el('span', { class: 'lg' }, el('i', { class: 'sw band-profile' }), 'profile run') : null,
       ui.x === 'time' ? el('span', { class: 'lg' }, el('i', { class: 'sw band-tune' }), 'calibration') : ui.x === 'order' && gaps.length ? el('span', { class: 'lg' }, el('i', { class: 'sw gap' }), 'calibration (no requests)') : null,
       el('span', { class: 'lg' }, el('i', { class: 'sw median' }), 'rolling median'));
     const q = { decode: 'How fast does each request decode?', prompt: 'How fast does each prompt read?', window: 'How long is each decode window?', hit: 'How often do the experts hit the VRAM cache?' }[ui.y];
     const card = S.card({ q: ui.x === 'time' || ui.x === 'order' ? q : ui.x === 'context' ? `${q.replace('?', '')} by context size?` : `Does the ${yo.label} follow the hit rate?`,
-      sub: `${yo.label} · ${yo.better} is better · the last ${win.length} requests · click a mark to open it`, tools, cls: 'span2' }, host, legend);
+      sub: `${yo.label} · ${yo.better} is better · the last ${pts.filter((p) => !isCalib(p.s)).length} requests${nCalib ? `, and the calibration's ${nCalib} among them` : ''} · click a mark to open it`, tools, cls: 'span2' }, host, legend);
     requestAnimationFrame(() => S.scatter(host, points, { xLog: xo.log, xTime: ui.x === 'time', bands, gaps, xTicks, median: ui.x === 'time' || ui.x === 'order', yFmt: yo.fmt, xFmt: ui.x === 'hit' ? (v) => `${v}%` : S.int, xLabel: xo.label, height: 280, y0: 0 }));
     return card;
   }
@@ -257,14 +262,18 @@
   }
 
   function draw(A) {
-    const all = A.samples();
+    const every = A.samples();
+    const all = every.filter((s) => !isCalib(s));
     const win = windowSamples(all);
+    // the trend covers the same stretch of time as the window, with the calibration's requests in it
+    const winAll = ui.n >= 300 ? every : every.slice(win.length ? every.indexOf(win[0]) : Math.max(0, every.length - ui.n));
     const last = newest(all);
     const scopeList = ui.scope === 'last' ? (last ? [last] : []) : win;
     S.fill(holders.tiles, tiles(A, all, win, last));
     const grid = holders.grid;
     S.clear(grid);
-    if (!all.length) { grid.appendChild(empty(A)); return; }
+    if (!all.length && !every.length) { grid.appendChild(empty(A)); return; }
+    if (!last) { grid.append(empty(A), trendCard(A, winAll, every)); return; }
     const lv = icicleLevels(scopeList, ui.scope === 'last' ? `${last.report_request ? `${last.report_request.label}, run ${S.runNo(last.report_request.report, A.reports)}` : `request #${last.seq}`}` : `${scopeList.length} requests`);
     const scopeSeg = S.seg([['last', 'last request'], ['window', `last ${win.length}`]], ui.scope, (v) => { ui.scope = v; S.store.set('now.scope', v); draw(A); }, 'scope');
     const nSeg = S.seg([[30, '30'], [50, '50'], [100, '100'], [300, 'all']], ui.n, (v) => { ui.n = v; S.store.set('now.n', v); draw(A); }, 'window size');
@@ -275,10 +284,10 @@
       lv ? S.legend([...new Set(lv.levels[2].map((s) => s.key))]) : null,
       ui.scope === 'last' && last ? el('p', { class: 'verdict' }, el('a', { href: `#now/r/${last.seq}`, text: 'Open this request: its timeline, phases and the same request in other runs →' })) : null);
     if (ui.scope === 'last' && last) ici.querySelector('.icicle').addEventListener('click', () => S.go(`#now/r/${last.seq}`));
-    grid.append(ici, windowCard(A, scopeList, last), trendCard(A, win, all), kindCard(A, win), slowCard(A, win), expertCard(A, scopeList, last));
-    const more = S.button(ui.table ? 'Hide all numbers' : `All numbers (${win.length} requests)`, () => { ui.table = !ui.table; draw(A); }, 'more');
+    grid.append(ici, windowCard(A, scopeList, last), trendCard(A, winAll, every), kindCard(A, win), slowCard(A, win), expertCard(A, scopeList, last));
+    const more = S.button(ui.table ? 'Hide all numbers' : `All numbers (${winAll.length} requests)`, () => { ui.table = !ui.table; draw(A); }, 'more');
     grid.appendChild(el('div', { class: 'span3 more-row' }, more));
-    if (ui.table) grid.appendChild(tableCard(A, win));
+    if (ui.table) grid.appendChild(tableCard(A, winAll));
   }
 
   S.viewDefs.now = {

@@ -155,6 +155,7 @@ pre.log { margin: 8px 0 0; padding: 10px 12px; background: var(--surface-2); bor
 .sw.band { background: var(--noise); }
 .sw.band.assumed { background: transparent; border: 1px dashed var(--noise-line); }
 .sw.band-tune { background: var(--band-tune); }
+.sw.calib-mark { background: transparent; border: 1.5px solid var(--k-adapt); border-radius: 50%; }
 .sw.gap { width: 2px; border-radius: 0; background: var(--k-adapt); }
 .sw.median { height: 2px; width: 14px; border-radius: 0; background: var(--ink-2); }
 .sw.dot { border-radius: 50%; } .sw.dot.better { background: var(--good); } .sw.dot.worse { background: var(--bad); } .sw.dot.same { background: var(--ink-3); }
@@ -250,6 +251,7 @@ svg .pt.hl .mark { fill: var(--accent); }
 svg .pt .hit { fill: transparent; }
 svg .pt.clickable { cursor: pointer; }
 svg .pt:hover .mark { fill: var(--ink); }
+svg .pt.calib .mark { fill: var(--surface); stroke: var(--k-adapt); stroke-width: 1.5; }
 svg .out-ring { fill: none; stroke: var(--bad); stroke-width: 1.5; }
 svg .pt-label { fill: var(--ink-2); font-size: 11px; }
 svg.sweep .whisker { stroke: var(--ink-3); stroke-width: 2; }
@@ -299,12 +301,12 @@ svg.sweep .tag-kept { fill: var(--ink); font-weight: 650; } svg.sweep .tag-best 
 .noise-label small { color: var(--ink-3); font-size: 11.5px; }
 
 /* ----------------------------------------------------------------------------------------- the PC diagram */
-.pc { display: grid; gap: 0 0;
-  grid-template-columns: minmax(0, 0.8fr) 48px minmax(0, 1.15fr) minmax(120px, 1.1fr) minmax(0, 1.15fr) 48px minmax(0, 1fr);
-  grid-template-areas: "disk l-disk ram l-pcie vram l-card gpu" ". . l-bus l-bus sum sum sum" ". . cpu cpu sum sum sum"; align-items: stretch; }
-.blk-disk { grid-area: disk; } .lnk-disk { grid-area: l-disk; } .blk-ram { grid-area: ram; } .lnk-pcie { grid-area: l-pcie; }
-.blk-vram { grid-area: vram; } .lnk-card { grid-area: l-card; } .blk-gpu { grid-area: gpu; } .lnk-bus { grid-area: l-bus; }
-.blk-cpu { grid-area: cpu; } .blk-sum { grid-area: sum; margin-left: 24px; }
+.pc { display: grid; gap: 0;
+  grid-template-columns: minmax(0, 0.75fr) 44px minmax(0, 1fr) minmax(96px, 0.8fr) minmax(0, 1fr) minmax(120px, 0.95fr) minmax(0, 1fr) 44px minmax(0, 0.95fr);
+  grid-template-areas: "disk l-disk ram l-bus cpu l-pcie vram l-card gpu" "sum sum sum sum sum sum sum sum sum"; align-items: stretch; }
+.blk-disk { grid-area: disk; } .lnk-disk { grid-area: l-disk; } .blk-ram { grid-area: ram; } .lnk-bus { grid-area: l-bus; }
+.blk-cpu { grid-area: cpu; } .lnk-pcie { grid-area: l-pcie; } .blk-vram { grid-area: vram; } .lnk-card { grid-area: l-card; }
+.blk-gpu { grid-area: gpu; } .blk-sum { grid-area: sum; }
 .blk { position: relative; background: var(--surface-2); border: 1.5px solid var(--line); border-radius: 10px; padding: 10px 12px 34px; min-width: 0; overflow: hidden; transition: border-color 0.3s, box-shadow 0.3s; }
 .blk.limit { border-color: var(--k-cpu); box-shadow: 0 0 0 3px color-mix(in srgb, var(--k-cpu) 25%, transparent); }
 .blk-gpu.limit, .blk-vram.limit { border-color: var(--k-gpu); box-shadow: 0 0 0 3px color-mix(in srgb, var(--k-gpu) 25%, transparent); }
@@ -342,14 +344,15 @@ svg.sweep .tag-kept { fill: var(--ink); font-weight: 650; } svg.sweep .tag-best 
 .pipe-flow { position: absolute; inset: 0; opacity: 0; background-image: repeating-linear-gradient(90deg, transparent 0 10px, rgba(255, 255, 255, 0.35) 10px 14px); background-size: 28px 100%; }
 .pipe-v .pipe-flow { background-image: repeating-linear-gradient(180deg, transparent 0 10px, rgba(255, 255, 255, 0.35) 10px 14px); background-size: 100% 28px; }
 .lnk.flowing .pipe-flow { opacity: 1; animation: flow-h 0.8s linear infinite; }
-.lnk-bus.flowing .pipe-flow { animation-name: flow-v; }
+.lnk-bus .pipe-fill { background: var(--k-cpu); }
 @keyframes flow-h { to { background-position: 28px 0; } }
 @keyframes flow-v { to { background-position: 0 28px; } }
 .lnk.limit .pipe { border-color: var(--k-cpu); }
 .lnk-pcie.limit .pipe { border-color: var(--k-pcie); }
-.lnk-bus { flex-direction: row; justify-content: flex-start; gap: 10px; padding: 0; margin-left: 28px; text-align: left; }
-.blk-cpu { margin-right: 24px; }
-.blk-sum { background: transparent; border: 0; padding: 4px 0 0 0; display: flex; flex-direction: column; gap: 4px; }
+.blk-sum { background: transparent; border: 0; padding: 16px 0 0 0; margin-top: 14px; border-top: 1px solid var(--line); border-radius: 0;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.2fr); grid-template-areas: "st lim bar" "big why leg"; gap: 2px 28px; align-items: center; }
+.blk-sum .blk-head { grid-area: st; } .blk-sum .blk-value { grid-area: big; margin: 0; } .sum-limit { grid-area: lim; }
+.sum-why { grid-area: why; } .sum-bar { grid-area: bar; } .sum-legend { grid-area: leg; }
 .sum-state { font-size: 12px; color: var(--ink-2); text-transform: lowercase; }
 .sum-big { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .sum-unit { color: var(--ink-2); }
@@ -469,16 +472,13 @@ dialog h2 { font-size: 17px; margin-bottom: 10px; }
   .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .span2 { grid-column: 1 / -1; }
   .sweeps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .pc { grid-template-columns: minmax(0, 0.8fr) 36px minmax(0, 1.1fr) minmax(100px, 1fr) minmax(0, 1.1fr) 36px minmax(0, 1fr); }
-}
-@media (max-width: 860px) {
   .pc { grid-template-columns: 1fr; grid-template-areas: "disk" "l-disk" "ram" "l-bus" "cpu" "l-pcie" "vram" "l-card" "gpu" "sum"; }
   .lnk { flex-direction: row; justify-content: flex-start; padding: 6px 0 6px 12px; text-align: left; gap: 10px; }
   .lnk .pipe-h { width: 26px; height: 40px; flex: none; }
-  .lnk .pipe-h .pipe-fill { transform: scaleX(0); }
   .lnk-disk .pipe-h, .lnk-card .pipe-h { width: 10px; height: 28px; }
-  .lnk-bus { margin-left: 0; }
-  .blk-sum { margin: 12px 0 0; }
+  .blk-sum { grid-template-columns: 1fr; grid-template-areas: "st" "big" "lim" "why" "bar" "leg"; }
+}
+@media (max-width: 860px) {
   .stepper { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 14px; }
   .gap-grid { grid-template-columns: 1fr; }
   .gap-grid .gh { display: none; }
