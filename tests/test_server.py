@@ -540,6 +540,33 @@ class Vendored(unittest.TestCase):
             for word in bad:
                 self.assertNotIn(word, text, f"{f.name} uses {word}")
 
+    def test_page_has_three_views_and_a_data_toggle(self):
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        nav = re.findall(r'<a class="tab" href="#(\w+)"', html)
+        self.assertEqual(nav, ["live", "compare", "tune"])
+        self.assertEqual(re.findall(r'<section id="view-(\w+)"', html), ["live", "compare", "tune"])
+        for needle in ('id="data-btn"', 'id="settings-btn"', 'id="drawer"'):
+            self.assertIn(needle, html)
+
+    def test_no_table_in_default_views(self):
+        """Tables are built by one helper, which only the Data view and the drawer call."""
+        js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        self.assertNotIn("<table", (ROOT / "web" / "index.html").read_text(encoding="utf-8"))
+        self.assertEqual(len(re.findall(r"el\('table'", js)), 1)
+        for fn in re.findall(r"^  function (build\w+|render(?:Live|Compare|Tune|Chrome))\(", js, re.M):
+            body = js.split(f"function {fn}(", 1)[1].split("\n  }\n", 1)[0]
+            self.assertNotIn("table(", body, fn)
+        for fn in ("renderData", "renderDrawer"):                     # the only two callers
+            body = js.split(f"function {fn}(", 1)[1].split("\n  }\n", 1)[0]
+            self.assertEqual(len(re.findall(r"\btable\(", body)), 1, fn)
+
+    def test_only_the_charts_and_chrome_names_the_page_uses(self):
+        css = (ROOT / "web" / "style.css").read_text(encoding="utf-8")
+        for token in ("--k-card", "--k-cpu", "--k-draft", "--k-pcie", "--k-wait", "--k-other", "--good", "--bad", "--noise"):
+            self.assertIn(token + ":", css)
+        for old in ("--series-1", "--seq-1", "GroupToken", "BUCKETS"):
+            self.assertNotIn(old, css + (ROOT / "web" / "charts.js").read_text(encoding="utf-8"))
+
     def test_the_page_has_no_inline_script_or_style(self):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         self.assertNotRegex(html, r"<script(?![^>]*\bsrc=)[^>]*>")
