@@ -72,7 +72,8 @@ class Routes(Base):
         self.assertEqual(set(doc), {"dir", "exists", "reports"})
         self.assertEqual(set(doc["reports"][0]), {"id", "date", "order", "gpu", "model", "quant", "context",
                                                   "strata_version", "elapsed_s", "chat_tps", "ok", "error",
-                                                  "settings_short", "tune", "note", "headline", "mtime"})
+                                                  "settings_short", "tune", "note", "headline", "mtime",
+                                                  "defaults"})
         _, _, rep = request(s, "GET", "/api/reports/" + support.A)
         self.assertEqual(set(rep), {"id", "path", "date", "machine", "params", "elapsed_s", "settings", "prompts",
                                     "decode", "agent", "chat_runs", "findings", "skipped", "failures",
@@ -119,7 +120,8 @@ class Routes(Base):
         _, _, doc = request(s, "GET", "/api/settings")
         self.assertEqual(set(doc), {"source", "file", "loaded", "rows", "note"})
         self.assertEqual(doc["source"], "profile/settings")
-        self.assertEqual(set(doc["rows"][0]), {"id", "name", "now", "next_load", "run_config", "calibrated", "about"})
+        self.assertEqual(set(doc["rows"][0]), {"id", "name", "now", "next_load", "run_config", "calibrated", "about",
+                                               "control"})
         self.assertEqual(doc["rows"][0]["now"], "0.55")
         self.assertIn("PCIe", doc["rows"][0]["about"])
 
@@ -540,11 +542,11 @@ class Vendored(unittest.TestCase):
             for word in bad:
                 self.assertNotIn(word, text, f"{f.name} uses {word}")
 
-    def test_page_has_four_views_a_panel_and_a_dialog(self):
+    def test_page_has_five_views_a_panel_and_a_dialog(self):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         nav = re.findall(r'<a class="tab" href="#(\w+)"', html)
-        self.assertEqual(nav, ["now", "runs", "tune", "settings"])
-        self.assertEqual(re.findall(r'<section id="view-(\w+)"', html), ["now", "runs", "tune", "settings"])
+        self.assertEqual(nav, ["now", "runs", "compare", "tune", "settings"])
+        self.assertEqual(re.findall(r'<section id="view-(\w+)"', html), ["now", "runs", "compare", "tune", "settings"])
         for needle in ('id="panel"', '<dialog id="dialog">', 'id="banner"', 'id="status"', 'id="theme"'):
             self.assertIn(needle, html)
 
@@ -573,12 +575,14 @@ class Vendored(unittest.TestCase):
             self.assertNotRegex(f.read_text(encoding="utf-8"), r"https?://(?!127\.0\.0\.1|localhost|www\.w3\.org)", f.name)
 
     def test_tables_only_in_details(self):
-        """A table is built by one helper (S.table); Now builds one only behind its "All numbers" switch."""
+        """Tables live in details views only: the S.table helper, the settings matrix of Compare and the settings
+        table.  Now builds no table of its own and calls S.table only behind its "All numbers" switch."""
         js = {f.name: f.read_text(encoding="utf-8") for f in (ROOT / "web").glob("*.js")}
-        self.assertEqual(sum(t.count("el('table'") for t in js.values()), 1)
+        self.assertEqual({n for n, t in js.items() if "el('table'" in t}, {"lib.js", "compare.js", "settings.js"})
         now = js["now.js"]
+        self.assertNotIn("el('table'", now)
         self.assertEqual(now.count("S.table("), 1)
-        self.assertIn("if (ui.table) grid.appendChild(tableCard(A, winAll));", now)
+        self.assertIn("S.fill(C.tableHost, ui.table ? tableCard(A, winAll) : null)", now)
 
 
 if __name__ == "__main__":

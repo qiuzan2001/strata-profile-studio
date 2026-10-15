@@ -219,6 +219,10 @@ class FakeStrata:
                     return fake.post_tune(self)
                 if path == "/v1/chat/completions":
                     return fake.post_chat(self)
+                if path == "/unload":
+                    with fake.lock:
+                        fake.loaded = False
+                    return self._reply(200, {"status": "unloaded"})
                 self._reply(404, {"error": {"message": "not found"}})
 
         self.httpd = http.server.ThreadingHTTPServer((host, port), H)

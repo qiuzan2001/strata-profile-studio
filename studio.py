@@ -19,7 +19,10 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from studiolib import __version__                                          # noqa: E402
+from studiolib.defaultsrun import DefaultsRun                              # noqa: E402
 from studiolib.enginelog import EngineLog                                  # noqa: E402
+from studiolib.experts import Profiles                                     # noqa: E402
+from studiolib.hostinfo import HostMonitor                                 # noqa: E402
 from studiolib.flow import Flow                                            # noqa: E402
 from studiolib.poller import Poller                                        # noqa: E402
 from studiolib.reports import ReportStore                                  # noqa: E402
@@ -58,7 +61,8 @@ class Studio:
 
     def __init__(self, strata: str, results: str, key: str | None = None, host: str = "127.0.0.1", port: int = 8090,
                  config: str | None = None, state_path: str | None = None, timing: Timing | None = None,
-                 allow_hosts=(), engine_log: str | None = None, read_only: bool = False):
+                 allow_hosts=(), engine_log: str | None = None, read_only: bool = False, host_monitor=None,
+                 defaults_tool=None):
         if not is_loopback(host) and not key:
             raise SystemExit("Refusing to listen on a non-loopback address without a key: add --key KEY "
                              "(or STRATA_KEY=KEY). The same key protects the Studio and is sent to Strata.")
@@ -82,7 +86,10 @@ class Studio:
                              studio_key=studio_key, host=host, port=port, client=self.client, poller=self.poller,
                              flow=self.flow, reports=self.reports, state=self.state, web_dir=ROOT / "web",
                              started_at=time.time(), allow_hosts=allow_hosts,
-                             engine_log=EngineLog(engine_log or default_engine_log(config)), read_only=read_only)
+                             engine_log=EngineLog(engine_log or default_engine_log(config)), read_only=read_only,
+                             host_monitor=host_monitor or HostMonitor(), profiles=Profiles(config) if config else None,
+                             defaults_run=DefaultsRun(self.client, self.poller, self.results, config, key,
+                                                      tool=defaults_tool) if config else None)
         try:
             self.server = StudioServer(host, port, make_handler(self.app))
         except OSError as e:
@@ -116,6 +123,8 @@ class Studio:
 
     def stop(self):
         self._flusher.set()
+        if self.app.host_monitor:
+            self.app.host_monitor.stop()
         self.flow.abandon()
         self.poller.stop()
         try:

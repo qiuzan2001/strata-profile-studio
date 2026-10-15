@@ -17,7 +17,7 @@ from pathlib import Path
 
 from .calibparse import same_value
 from .reports import ENV_FLAGS, SETTING_FLAGS, arg_value
-from .settings import CONFIG_MAX
+from .settings import CONFIG_MAX, CONTROLS, SPEED_SETTINGS, check_value
 
 CALIBRATED = ("--pcie-frac", "--spec-min-p", "--pool-workers", "--adapt-every", "--adapt-swaps", "--adapt-decay")
 
@@ -137,6 +137,10 @@ def apply(config_path, rep: dict, flags: list, sha: str, busy_reason: str | None
         changes.append({"flag": f, "from": r["file"], "to": r["run"]})
     if not changes:
         raise ConfigWriteError(400, "The file already has these values; nothing was written.")
+    return _write(config_path, raw, cfg, changes)
+
+
+def _write(config_path, raw: bytes, cfg: dict, changes: list) -> dict:
     text = raw.decode("utf-8-sig")
     new = json.dumps(cfg, indent=_indent(text), ensure_ascii=False) + ("\n" if text.endswith("\n") else "")
     p = Path(config_path)
@@ -155,3 +159,55 @@ def apply(config_path, rep: dict, flags: list, sha: str, busy_reason: str | None
                                     "it is unchanged.")
     return {"ok": True, "path": str(p), "backup": str(bak), "changes": changes,
             "sha": hashlib.sha256(new.encode("utf-8")).hexdigest()}
+
+
+def file_doc(config_path) -> dict:
+    """The run config's identity for a hand edit: its path and sha256."""
+    raw, _ = _read(config_path)
+    return {"path": str(config_path), "file": Path(config_path).name, "sha": hashlib.sha256(raw).hexdigest(),
+            "backup": Path(config_path).name + ".bak"}
+
+
+def apply_edits(config_path, edits: list, sha: str, busy_reason: str | None = None) -> dict:
+    """Hand edits from the Settings page: [{"id": <setting id>, "value": <text> | None for the engine default}].
+    Validated against settings.CONTROLS; written with a .bak like `apply`."""
+    if busy_reason:
+        raise ConfigWriteError(409, busy_reason)
+    if not isinstance(edits, list) or not edits:
+        raise ConfigWriteError(400, "There is no edit to write.")
+    raw, cfg = _read(config_path)
+    if not isinstance(sha, str) or sha != hashlib.sha256(raw).hexdigest():
+        raise ConfigWriteError(409, "The config file changed since the page read it. Read it again before writing.")
+    by_id = {r[0]: r for r in SPEED_SETTINGS}
+    changes = []
+    for e in edits:
+        if not isinstance(e, dict) or e.get("id") not in by_id or e.get("id") not in CONTROLS:
+            raise ConfigWriteError(400, f"{(e or {}).get('id')} is not a setting the Studio can edit.")
+        rid, value = e["id"], e.get("value")
+        value = None if value is None or str(value).strip() in ("", "default") else str(value).strip()
+        why = check_value(rid, value)
+        if why:
+            raise ConfigWriteError(400, f"{by_id[rid][1]}: {why}")
+        _, name, kind, _, _, _ = by_id[rid]
+        if kind == "arg":
+            before = arg_value(cfg["args"], name)
+            cfg["args"] = _set_arg(cfg["args"], name, value)
+        elif kind == "env":
+            env = cfg.get("env") if isinstance(cfg.get("env"), dict) else {}
+            before = env.get(name)
+            if value is None:
+                env.pop(name, None)
+            else:
+                env[name] = value
+            cfg["env"] = env
+        else:
+            before = cfg.get(name)
+            if value is None:
+                cfg.pop(name, None)
+            else:
+                cfg[name] = value
+        if not same_value(before, value) and not (before is None and value is None):
+            changes.append({"flag": name, "from": None if before is None else str(before), "to": value})
+    if not changes:
+        raise ConfigWriteError(400, "The file already has these values. Nothing was written.")
+    return _write(config_path, raw, cfg, changes)

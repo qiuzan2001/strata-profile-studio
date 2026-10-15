@@ -22,6 +22,7 @@ ROUTES = {
     "run": ("POST", "/profile/run", "post_timeout"),
     "tune": ("POST", "/profile/tune", "post_timeout"),
     "chat": ("POST", "/v1/chat/completions", "reload_attempt_timeout"),
+    "unload": ("POST", "/unload", "post_timeout"),
 }
 
 

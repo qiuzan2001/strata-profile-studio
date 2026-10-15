@@ -69,6 +69,34 @@ S.title = function title(node, text) {         // a native tooltip on an SVG mar
   return node;
 };
 
+// ------------------------------------------------------------------------------------- in-place updates
+// Live regions never rebuild: they change a text node's value, an attribute or one style property, and only when the
+// value is new.  A text change keeps the node (a characterData mutation, no layout of new nodes).
+S.setText = function setText(node, s) {
+  s = s === null || s === undefined ? '' : String(s);
+  const t = node.firstChild;
+  if (t && t.nodeType === 3 && !t.nextSibling) { if (t.nodeValue !== s) t.nodeValue = s; return node; }
+  if (node.textContent !== s) node.textContent = s;
+  return node;
+};
+S.setAttr = function setAttr(node, k, v) {
+  const s = v === null || v === undefined ? null : String(v);
+  if (s === null) { if (node.hasAttribute(k)) node.removeAttribute(k); } else if (node.getAttribute(k) !== s) node.setAttribute(k, s);
+  return node;
+};
+S.setStyle = function setStyle(node, prop, v) {
+  if (node.style[prop] !== v) node.style[prop] = v;
+  return node;
+};
+S.setClass = function setClass(node, cls, on) {
+  if (node.classList.contains(cls) !== !!on) node.classList.toggle(cls, !!on);
+  return node;
+};
+S.show = function show(node, on) {
+  if (node.hidden === !!on) node.hidden = !on;
+  return node;
+};
+
 // ------------------------------------------------------------------------------------------- numbers
 const isNum = (S.isNum = (x) => typeof x === 'number' && isFinite(x));
 
@@ -145,18 +173,18 @@ S.PART_LABEL = {
   'GDN': 'GDN', 'host': 'host', 'not split': 'not split',
 };
 S.PART_ABOUT = {
-  'GPU': 'the host waits for the card to finish the window',
-  'CPU experts': 'experts not in VRAM, computed by the CPU pool (RAM-bandwidth-bound)',
-  'draft': 'the draft layer proposes the next tokens',
-  'adapt wait': 'the adaptive tier swaps experts into VRAM',
-  'other': 'commit, stage and what the engine does not itemize',
-  'experts over PCIe': 'the card waits for expert copies over PCIe (wait copy, gather, host grouping)',
-  'dequant': 'the copied experts are expanded on the card',
-  'expert GEMM': 'the card multiplies the experts (gate/up, down, combine)',
-  'attention': 'QSA projections, indexer, selection, attention, KV staging',
-  'GDN': 'the linear-attention layers',
-  'host': 'prompt time outside the GPU timeline (host staging, PLE, chunk setup)',
-  'not split': 'this request carries no phase split (it came from the history)',
+  'GPU': 'The host waits for the GPU to complete the window.',
+  'CPU experts': 'The CPU pool computes the experts that are not in VRAM. RAM bandwidth limits it.',
+  'draft': 'The draft layer proposes the next tokens.',
+  'adapt wait': 'The adaptive tier swaps experts into VRAM.',
+  'other': 'Commit, stage, and the time that the engine does not split.',
+  'experts over PCIe': 'The GPU waits for expert copies over PCIe (wait copy, gather, host grouping).',
+  'dequant': 'The GPU expands the copied experts.',
+  'expert GEMM': 'The GPU multiplies the experts (gate/up, down, combine).',
+  'attention': 'QSA projections, indexer, selection, attention and KV staging.',
+  'GDN': 'The linear-attention layers.',
+  'host': 'Prompt time outside the GPU timeline (host staging, PLE, chunk setup).',
+  'not split': 'This request has no phase split (it comes from the history).',
 };
 S.PHASE_GROUP = {
   'wait copy': 'experts over PCIe', 'gather': 'experts over PCIe', 'host grouping': 'experts over PCIe',
@@ -167,10 +195,10 @@ S.PHASE_GROUP = {
 S.KINDS = ['short', 'follow-up', 'long prompt', 'prompt only'];
 S.KIND_LABEL = { 'short': 'short chat', 'follow-up': 'follow-up turn', 'long prompt': 'long prompt', 'prompt only': 'prompt only' };
 S.KIND_ABOUT = {
-  'short': 'a fresh prompt under 8K tokens',
-  'follow-up': 'the conversation cache reused part of the prompt',
-  'long prompt': 'a fresh prompt of 8K tokens or more',
-  'prompt only': 'one token or none generated',
+  'short': 'A new prompt of less than 8K tokens.',
+  'follow-up': 'The conversation cache reused a part of the prompt.',
+  'long prompt': 'A new prompt of 8K tokens or more.',
+  'prompt only': 'One token or no token generated.',
 };
 
 // the marker of a request kind, centred on (x, y) with radius r
@@ -214,7 +242,7 @@ S.api = async function api(path, opts) {
   try {
     r = await fetch(path, o);
   } catch (e) {
-    const err = new Error('The Studio does not answer (is studio.py still running?).');
+    const err = new Error('The Studio does not answer. Make sure that studio.py runs.');
     err.status = 0;
     throw err;
   }
@@ -254,7 +282,7 @@ S.go = function go(hash) {
 S.card = function card(opts, ...body) {
   const head = S.el('header', { class: 'card-head' },
     S.el('h3', { text: opts.q }),
-    opts.sub ? S.el('p', { class: 'sub', text: opts.sub }) : null,
+    S.el('p', { class: 'sub', text: opts.sub || '' }),
     opts.tools || null);
   return S.el('section', { class: `card ${opts.cls || ''}`, id: opts.id }, head, ...body,
     opts.verdict ? S.el('p', { class: 'verdict', text: opts.verdict }) : null);

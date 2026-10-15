@@ -38,7 +38,7 @@
   function timeline(r) {
     const pms = isNum(r.prompt_ms) ? r.prompt_ms : 0, dms = isNum(r.decode_ms) ? r.decode_ms : 0;
     const total = pms + dms;
-    if (total <= 0) return el('p', { class: 'empty-line', text: 'No timing for this request.' });
+    if (total <= 0) return el('p', { class: 'empty-line', text: 'This request has no timing.' });
     const box = el('div', { class: 'tl' });
     const axis = el('div', { class: 'tl-axis' });
     for (const t of S.niceTicks(0, total, 5)) {
@@ -127,7 +127,7 @@
         S.kindIcon(r.kind), el('h2', { text: title })),
       el('div', { class: 'panel-sub' },
         el('span', { text: S.KIND_LABEL[r.kind] || r.kind || '' }),
-        isNum(r.seen_at) ? el('span', { text: r.late ? 'before the Studio started' : S.clock(r.seen_at, 'sec') }) : null,
+        isNum(r.seen_at) ? el('span', { text: r.late ? 'before the start of the Studio' : S.clock(r.seen_at, 'sec') }) : null,
         ...where),
       el('div', { class: 'panel-tools' },
         S.button('◀', prev, 'icon', { title: 'Previous request', disabled: !prev, 'aria-label': 'Previous request' }),
@@ -136,19 +136,19 @@
 
     const total = (r.prompt_ms || 0) + (r.decode_ms || 0);
     const tiles = el('div', { class: 'tiles small' },
-      S.tile('decode', S.tps(r.decode_tok_s), 'tok/s', isNum(r.generated) ? `${S.int(r.generated)} tokens out` : ''),
-      S.tile('prompt read', S.tps(r.prompt_tok_s), 'tok/s', isNum(r.prompt_tokens) ? `${S.int(r.prompt_tokens)} in${r.reused ? `, ${S.int(r.reused)} reused` : ''}` : ''),
-      S.tile('total', S.ms(total), '', isNum(r.ttft_s) ? `first token after ${S.num(r.ttft_s, 2)} s` : ''),
-      S.tile('expert cache hit', S.pct(r.hit_rate), '', isNum(r.pcie_share) ? `${S.pct(r.pcie_share, 1)} over PCIe` : ''));
+      S.tile('Decode speed', S.tps(r.decode_tok_s), 'tok/s', isNum(r.generated) ? `${S.int(r.generated)} tokens generated` : ''),
+      S.tile('Prompt read speed', S.tps(r.prompt_tok_s), 'tok/s', isNum(r.prompt_tokens) ? `${S.int(r.prompt_tokens)} in${r.reused ? `, ${S.int(r.reused)} reused` : ''}` : ''),
+      S.tile('Total time', S.ms(total), '', isNum(r.ttft_s) ? `first token: ${S.num(r.ttft_s, 2)} s` : ''),
+      S.tile('Expert cache hit rate', S.pct(r.hit_rate), '', isNum(r.pcie_share) ? `${S.pct(r.pcie_share, 1)} over PCIe` : ''));
 
     const body = [tiles];
-    body.push(S.card({ q: "Where did this request's time go?", sub: 'ms on one time axis: the prompt read by phase (in proportion, not in time order), then the decode by window part', cls: 'flat' },
+    body.push(S.card({ q: 'Request timeline', sub: 'ms on one time axis · prompt read per phase (in proportion, not in time order), then decode per window part', cls: 'flat' },
       timeline(r), S.legend([...new Set([...S.promptParts(r), ...S.decodeParts(r)].map((p) => p.key))])));
 
     if (r.window_ms && isNum(r.ms_per_window)) {
       const parts = S.DECODE_PARTS.map((k) => ({ key: k, value: r.window_ms[k] }));
       const top = parts.filter((p) => p.key !== 'other').sort((x, y) => (y.value || 0) - (x.value || 0))[0];
-      body.push(S.card({ q: 'What is one decode window made of?', sub: `ms per window, average of ${isNum(r.windows) ? S.int(r.windows) : 'its'} windows · lower is better`, cls: 'flat' },
+      body.push(S.card({ q: 'Decode window composition', sub: `ms per window, mean of ${isNum(r.windows) ? S.int(r.windows) : 'all'} windows · lower is better`, cls: 'flat' },
         S.stack(parts, { total: `${S.num(r.ms_per_window, 1)} ms`, hl: top && top.key, fmt: (v) => S.num(v, 1) }),
         factsGrid([
           ['tokens per window', S.num(r.tokens_per_window, 2)],
@@ -162,10 +162,10 @@
 
     const src = S.expertSources(r);
     if (src) {
-      body.push(S.card({ q: 'Where did the experts come from?', sub: `share of the routed experts${isNum(r.routed) ? ` (${S.int(r.routed)})` : ''} · more from VRAM is faster`, cls: 'flat' },
+      body.push(S.card({ q: 'Expert sources', sub: `share of the routed experts${isNum(r.routed) ? ` (${S.int(r.routed)})` : ''} · more from VRAM is faster`, cls: 'flat' },
         S.bars([
           { label: 'VRAM expert cache', value: src.vram, cls: 'k-gpu', text: S.pct(src.vram, 1) },
-          { label: 'computed by the CPU', value: src.cpu, cls: 'k-cpu', text: S.pct(src.cpu, 1) },
+          { label: 'CPU pool', value: src.cpu, cls: 'k-cpu', text: S.pct(src.cpu, 1) },
           { label: 'read over PCIe', value: src.pcie, cls: 'k-pcie', text: S.pct(src.pcie, 1) },
         ], { max: 1, sort: false }),
         factsGrid([
@@ -177,15 +177,15 @@
     const phases = r.phases ? Object.entries(r.phases) : (r.prompt_top || []).filter((t) => isNum(t[1]));
     if (phases.length) {
       const gpu = r.prompt_gpu_ms || S.sum(phases.map((p) => p[1]));
-      body.push(S.card({ q: 'Which prompt phases took longest?', sub: `ms of GPU time${r.phases ? '' : ' (the top five that /profile/last reports)'} · lower is better`, cls: 'flat' },
+      body.push(S.card({ q: 'Prompt read phases', sub: `GPU time, ms${r.phases ? '' : ' (the 5 largest phases in /profile/last)'} · lower is better`, cls: 'flat' },
         S.bars(phases.filter((p) => p[1] > 0).map(([name, ms]) => ({ label: name, value: ms, cls: S.PART_CLASS[S.PHASE_GROUP[name] || 'other'], text: `${S.ms(ms)} · ${S.pct(ms / gpu)}` })), { fmt: S.ms })));
     } else if (r.prompt_top && r.prompt_top.length) {
-      body.push(el('p', { class: 'note', text: `Largest prompt group: ${r.prompt_top[0][0]} (the history keeps no more).` }));
+      body.push(el('p', { class: 'note', text: `Largest prompt group: ${r.prompt_top[0][0]}. The history keeps only this value.` }));
     }
 
     if (r.prompt_host) {
       const h = r.prompt_host;
-      body.push(S.card({ q: 'What did the host do around the prompt read?', sub: 'ms', cls: 'flat' }, factsGrid([
+      body.push(S.card({ q: 'Host time around the prompt read', sub: 'ms', cls: 'flat' }, factsGrid([
         ['host staging', isNum(r.host_staging_ms) ? S.ms(r.host_staging_ms) : null], ['chunk setup', S.ms(h.chunk_setup_ms)],
         ['waiting for each chunk', S.ms(h.wait_chunk_ms)], ['after each chunk', S.ms(h.after_chunk_ms)], ['PLE', S.ms(h.ple_ms)]])));
     }
@@ -193,15 +193,15 @@
     if (r.gpu_stages && (r.gpu_stages.gdn || r.gpu_stages.qsa)) {
       const rows = [];
       for (const [layer, stages] of [['GDN', r.gpu_stages.gdn || {}], ['QSA', r.gpu_stages.qsa || {}]]) for (const [n, ms] of Object.entries(stages)) rows.push({ layer, n, ms });
-      body.push(S.card({ q: 'Which decode stage takes the card longest?', sub: 'GPU ms per window (STRATA_VERIFY_PROFILE)', cls: 'flat' },
+      body.push(S.card({ q: 'GPU time per decode stage', sub: 'ms per window (STRATA_VERIFY_PROFILE)', cls: 'flat' },
         S.bars(rows.map((x) => ({ label: `${x.layer} ${x.n}`, value: x.ms })), { fmt: (v) => S.num(v, 2), unit: 'ms' })));
     }
 
     // this request in every run
     const sameId = ctx.where === 'report' ? r.id : (r.report_request && r.report_request.id);
     if (sameId) {
-      const holder = el('div', { class: 'strip-holder' }, el('p', { class: 'empty-line', text: 'Loading the other runs…' }));
-      body.push(S.card({ q: 'Is this request as fast in the other runs?', sub: `decode tok/s of "${r.label || (r.report_request && r.report_request.label)}" in every report · the spread is this PC's noise`, cls: 'flat' }, holder));
+      const holder = el('div', { class: 'strip-holder' }, el('p', { class: 'empty-line', text: 'Reading the other runs …' }));
+      body.push(S.card({ q: 'The same request in other runs', sub: `decode speed of "${r.label || (r.report_request && r.report_request.label)}" in each report, tok/s · the spread is the noise of this PC`, cls: 'flat' }, holder));
       S.app.allReports().then((docs) => {
         const cur = ctx.where === 'report' ? ctx.report : r.report_request.report;
         const items = docs.map((d) => {
@@ -209,10 +209,10 @@
           return q ? { value: q.decode_tok_s, label: S.runName(d.id, reports), short: `run ${S.runNo(d.id, reports)}`, hl: d.id === cur, labelled: true, onclick: () => S.go(`#runs/${d.id}/r/${sameId}`) } : null;
         }).filter(Boolean);
         S.fill(holder, S.strip(items, { unit: 'tok/s' }));
-      }).catch(() => S.fill(holder, el('p', { class: 'empty-line', text: 'The other runs could not be read.' })));
+      }).catch(() => S.fill(holder, el('p', { class: 'empty-line', text: 'The Studio cannot read the other runs.' })));
     }
 
-    const raw = el('details', { class: 'raw' }, el('summary', { text: 'All fields of this request' }),
+    const raw = el('details', { class: 'raw' }, el('summary', { text: 'All fields of the request' }),
       S.table([{ label: 'field', key: 'k' }, { label: 'value', key: 'v' }],
         Object.keys(r).filter((k) => !['run', 'report_request'].includes(k)).map((k) => ({ k, v: typeof r[k] === 'object' && r[k] !== null ? JSON.stringify(r[k]) : r[k] }))));
     body.push(raw);

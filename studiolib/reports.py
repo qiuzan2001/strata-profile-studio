@@ -228,6 +228,31 @@ def headline(rep: dict) -> dict:
             "agent": [t["decode_tps"] for t in rep["agent"]]}
 
 
+CALIBRATED_FLAGS = ("--pcie-frac", "--spec-min-p", "--pool-workers", "--adapt-every", "--adapt-swaps", "--adapt-decay")
+PRODUCT_DEFAULTS = {"--pcie-frac": "0.55", "--spec-min-p": "0.5"}   # what setup writes (calibparse's defaults)
+
+
+def is_defaults(rep: dict) -> bool:
+    """The run used the engine's defaults for every setting the calibration changes: its config had none of the
+    calibrated flags, or only setup's own values for them.  Needs the report's own config."""
+    if rep["settings"]["source"] != "report":
+        return False
+    rows = {r["flag"]: r.get("config") for r in rep["settings"]["rows"]}
+    if not any(v is not None for v in rows.values()):    # the report has no config arguments: unknown, not "default"
+        return False
+    for flag in CALIBRATED_FLAGS:
+        v = rows.get(flag)
+        if v is None:
+            continue
+        d = PRODUCT_DEFAULTS.get(flag)
+        try:
+            if d is None or abs(float(v) - float(d)) > 1e-9:
+                return False
+        except ValueError:
+            return False
+    return True
+
+
 def list_entry(rep: dict, order: list, short: dict, ctx) -> dict:
     """One card of the report list from a normalised report and its settings chips."""
     chat = next((d for d in rep["decode"] if d["kind"] == "chat"), None)
@@ -235,7 +260,7 @@ def list_entry(rep: dict, order: list, short: dict, ctx) -> dict:
     return {"id": rep["id"], "date": rep["date"], "order": order, "gpu": m["gpu"], "model": m["model"],
             "quant": m["quant"], "context": m["context"], "strata_version": m["strata_version"],
             "elapsed_s": rep["elapsed_s"], "chat_tps": chat["tps"]["median"] if chat else None, "ok": True,
-            "headline": headline(rep), "mtime": order[4] if len(order) > 4 else None,
+            "headline": headline(rep), "mtime": order[4] if len(order) > 4 else None, "defaults": is_defaults(rep),
             "error": None, "settings_short": short,
             "tune": ctx.tune_role(rep["id"]) if ctx else None, "note": ctx.note(rep["id"]) if ctx else ""}
 
@@ -357,6 +382,7 @@ class ReportStore:
                 out["reports"].append({"id": name, "date": name[:10], "order": order, "gpu": None, "model": None,
                                        "quant": None, "context": None, "strata_version": None, "elapsed_s": None,
                                        "chat_tps": None, "ok": False, "error": UNREADABLE, "headline": None,
+                                       "defaults": False,
                                        "mtime": order[4],
                                        "settings_short": {"pcie_frac": None, "spec_min_p": None, "pool_workers": None,
                                                           "adapt": None},

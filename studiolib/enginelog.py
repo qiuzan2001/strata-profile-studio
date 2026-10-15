@@ -15,14 +15,20 @@ import threading
 TAIL_BYTES = 1024 * 1024
 RE_PROBE = re.compile(r"PCIe share: the CPU pool takes ([\d.]+) us per missed expert \(([\d.]+) GB/s of expert bytes\), "
                       r"the link ([\d.]+) GB/s -> pcie_frac ([\d.]+)(?: \(was ([\d.]+))?")
+RE_POOL = re.compile(r"(\d+) pool workers on logical processors ([\d,]+), the host thread on (\d+)")
 RE_VRAM = re.compile(r"WARNING: only (\d+) MiB of VRAM free at the start of this request \(below (\d+) MiB\)")
 
 
 def parse(lines) -> dict:
     """{"probe": {...} | None, "vram_warning": {...} | None, "probes": n} from log lines (oldest first)."""
-    probe = warn = None
+    probe = warn = pool = None
     n = 0
     for line in lines:
+        m = RE_POOL.search(line)
+        if m:
+            pool = {"workers": int(m.group(1)), "cpus": [int(x) for x in m.group(2).split(",") if x],
+                    "host_cpu": int(m.group(3))}
+            continue
         m = RE_PROBE.search(line)
         if m:
             n += 1
@@ -32,7 +38,7 @@ def parse(lines) -> dict:
         m = RE_VRAM.search(line)
         if m:
             warn = {"free_mib": int(m.group(1)), "below_mib": int(m.group(2))}
-    return {"probe": probe, "vram_warning": warn, "probes": n}
+    return {"probe": probe, "vram_warning": warn, "probes": n, "pool": pool}
 
 
 class EngineLog:
@@ -40,7 +46,7 @@ class EngineLog:
         self.path = str(path) if path else None
         self._lock = threading.Lock()
         self._key = None
-        self._val = {"probe": None, "vram_warning": None, "probes": 0}
+        self._val = {"probe": None, "vram_warning": None, "probes": 0, "pool": None}
 
     def facts(self) -> dict:
         """The newest facts; {"path": None, ...} when no log is known or it cannot be read."""
@@ -65,8 +71,9 @@ class EngineLog:
                 if pos > 0 and lines:
                     lines = lines[1:]                          # the tail starts inside a line
                 new = parse(lines)
-                if new["probe"] is None:                       # the probe line left the tail: keep the last one seen
-                    new["probe"] = self._val["probe"]
+                for k in ("probe", "pool"):                    # a line that left the tail: keep the last one seen
+                    if new[k] is None:
+                        new[k] = self._val[k]
                 self._val = new
                 self._key = key
             return {"path": self.path, "readable": True, **self._val}

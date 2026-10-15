@@ -36,7 +36,7 @@
   S.bars = function bars(items, opts) {
     const o = Object.assign({ sort: 'desc', fmt: S.tps }, opts || {});
     let list = items.filter((i) => isNum(i.value) || (i.dots && i.dots.some(isNum)));
-    if (!list.length) return el('p', { class: 'empty-line', text: o.empty || 'Nothing measured yet.' });
+    if (!list.length) return el('p', { class: 'empty-line', text: o.empty || 'No measurement yet.' });
     if (o.sort) list = list.slice().sort((a, b) => (o.sort === 'desc' ? (b.value ?? -1) - (a.value ?? -1) : (a.value ?? 1e18) - (b.value ?? 1e18)));
     const max = o.max || Math.max(...list.map((i) => Math.max(i.value || 0, ...(i.dots || []).filter(isNum)))) || 1;
     const box = el('div', { class: `bars ${o.cls || ''}` });
@@ -186,20 +186,20 @@
       }
       const row = el('div', { class: `forest-row ${r.onclick ? 'clickable' : ''} ${r.cls || ''}` },
         el('div', { class: 'f-label', text: r.label }), tr,
-        el('div', { class: `f-val ${r.state || ''}`, text: isNum(r.pct) ? S.signed(r.pct, 1, '%') : 'not in both' }));
+        el('div', { class: `f-val ${r.state || ''}`, text: r.valText || (isNum(r.pct) ? S.signed(r.pct, 1, ' %') : r.note ? 'see note' : 'not in both') }));
       S.hover(row, [r.label, ['change', isNum(r.pct) ? S.signed(r.pct, 1, '%') : '–'], ['A → B', r.ab || '–'],
         ['noise floor', isNum(r.floor) ? `±${r.floor.toFixed(1)}%${r.assumed ? ' (assumed)' : ''}` : '–'],
-        r.state === 'better' ? 'outside the noise: better' : r.state === 'worse' ? 'outside the noise: worse' : 'inside the noise', r.note || '']);
+        r.state === 'better' ? 'faster, outside the noise' : r.state === 'worse' ? 'slower, outside the noise' : 'inside the noise', r.note || '']);
       if (r.onclick) row.addEventListener('click', r.onclick);
       box.appendChild(row);
     }
     box.appendChild(axis);
     if (o.legend !== false) {
       box.appendChild(el('div', { class: 'legend' },
-        el('span', { class: 'lg' }, el('i', { class: 'sw band' }), 'noise floor (measured)'),
+        el('span', { class: 'lg' }, el('i', { class: 'sw band' }), 'noise floor, measured'),
         el('span', { class: 'lg' }, el('i', { class: 'sw band assumed' }), 'assumed floor'),
-        el('span', { class: 'lg' }, el('i', { class: 'sw dot better' }), 'better, outside the noise'),
-        el('span', { class: 'lg' }, el('i', { class: 'sw dot worse' }), 'worse, outside the noise'),
+        el('span', { class: 'lg' }, el('i', { class: 'sw dot better' }), 'faster, outside the noise'),
+        el('span', { class: 'lg' }, el('i', { class: 'sw dot worse' }), 'slower, outside the noise'),
         el('span', { class: 'lg' }, el('i', { class: 'sw dot same' }), 'inside the noise')));
     }
     return box;
@@ -263,7 +263,7 @@
     const pts = points.filter((p) => isNum(p.x) && isNum(p.y) && (!o.xLog || p.x > 0));
     const s = svg('svg', { class: 'scatter', viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', 'aria-label': o.aria || '' });
     if (!pts.length) {
-      s.appendChild(svg('text', { x: W / 2, y: H / 2, class: 'empty-svg', 'text-anchor': 'middle', text: o.empty || 'No requests to plot yet.' }));
+      s.appendChild(svg('text', { x: W / 2, y: H / 2, class: 'empty-svg', 'text-anchor': 'middle', text: o.empty || 'No requests yet.' }));
       S.fill(host, s);
       return s;
     }
@@ -386,7 +386,7 @@
       const tags = [isKept ? 'kept' : null, isBest && !isKept ? 'best' : null, isWas ? 'was' : null, isDef && !isWas ? 'default' : null].filter(Boolean);
       tags.forEach((tag, k) => g.appendChild(svg('text', { class: `xtag tag-${tag}`, x: cx, y: H - m.b + 28 + k * 12, 'text-anchor': 'middle', text: tag })));
       S.hover(g, [`${step.label} ${lab}`, ['median', isNum(v.median) ? `${S.num(v.median, 1)} tok/s` : '–'],
-        ['rounds', (v.rounds || []).length ? v.rounds.map((r) => S.num(r, 1)).join(', ') : 'one measurement'],
+        ['rounds', (v.rounds || []).length ? v.rounds.map((r) => S.num(r, 1)).join(', ') : '1 measurement'],
         ['range', isNum(v.min) ? `${S.num(v.min, 1)}–${S.num(v.max, 1)}` : '–'], tags.join(', ')]);
       s.appendChild(g);
     });
@@ -423,5 +423,254 @@
       area.setAttribute('d', d ? `${d}L100 24L0 24Z` : '');
     };
     return s;
+  };
+})();
+
+/* ------------------------------------------------------------------------------------------------------------
+   Live components: built once, then `update(...)` changes only attributes, one style property or a text node's
+   value.  A live region therefore never adds or removes a node while data arrives (the page check measures it). */
+(function () {
+  const { el, svg, isNum } = S;
+
+  // ranked bars with a fixed set of keys; `spread`: a min-max band and the median tick instead of one dot per request
+  S.LiveBars = function LiveBars(keys, opts) {
+    const o = Object.assign({ fmt: S.tps, unit: '' }, opts || {});
+    const node = el('div', { class: `bars live ${o.cls || ''}` });
+    const rows = {};
+    for (const k of keys) {
+      const r = rows[k] = {};
+      r.name = el('span', { text: '' });
+      r.note = el('small', { text: '' });
+      r.bar = el('div', { class: 'bar k-bar' });
+      r.band = el('i', { class: 'bar-band', hidden: true });
+      r.val = el('span', { class: 'bar-val num', text: '' });
+      r.track = el('div', { class: 'bar-track' }, r.bar, r.band, r.val);
+      r.icon = el('span', { class: 'bar-icon' });
+      r.row = el('div', { class: 'bar-row with-note', dataset: { key: k } },
+        el('div', { class: 'bar-label' }, r.icon, el('div', { class: 'bar-names' }, r.name, r.note)), r.track);
+      node.appendChild(r.row);
+    }
+    node.addEventListener('click', (e) => {
+      const row = e.target.closest('.bar-row');
+      const it = row && node._items && node._items[row.dataset.key];
+      if (it && it.onclick) it.onclick(e);
+    });
+    node.addEventListener('mousemove', (e) => {
+      const row = e.target.closest('.bar-row');
+      const it = row && node._items && node._items[row.dataset.key];
+      if (it && it.tip) S.tipShow(e, typeof it.tip === 'function' ? it.tip() : it.tip); else S.tipHide();
+    });
+    node.addEventListener('mouseleave', S.tipHide);
+    return {
+      node,
+      update(items) {
+        node._items = {};
+        const max = o.max || Math.max(1e-9, ...items.map((i) => Math.max(i.value || 0, (i.spread && i.spread[1]) || 0)));
+        for (const k of keys) {
+          const r = rows[k];
+          const it = items.find((x) => x.key === k);
+          S.show(r.row, !!it);
+          if (!it) continue;
+          node._items[k] = it;
+          S.setText(r.name, it.label);
+          S.setText(r.note, it.note || '');
+          S.setAttr(r.bar, 'class', `bar ${it.cls || 'k-bar'} ${it.hl ? 'hl' : ''}`);
+          S.setClass(r.row, 'hl', !!it.hl);
+          S.setClass(r.row, 'clickable', !!it.onclick);
+          if (it.iconKind && r.icon._kind !== it.iconKind) { S.fill(r.icon, S.kindIcon(it.iconKind)); r.icon._kind = it.iconKind; }
+          const w = isNum(it.value) ? Math.max(0.4, (it.value / max) * 100) : 0;
+          S.setStyle(r.bar, 'width', `${w.toFixed(2)}%`);
+          const sp = it.spread && isNum(it.spread[0]) && isNum(it.spread[1]) ? it.spread : null;
+          S.show(r.band, !!sp);
+          if (sp) {
+            S.setStyle(r.band, 'left', `${((sp[0] / max) * 100).toFixed(2)}%`);
+            S.setStyle(r.band, 'width', `${Math.max(0.5, ((sp[1] - sp[0]) / max) * 100).toFixed(2)}%`);
+          }
+          const end = Math.max(w, sp ? (sp[1] / max) * 100 : 0);
+          S.setText(r.val, it.text !== undefined ? it.text : `${o.fmt(it.value)}${o.unit ? ' ' + o.unit : ''}`);
+          S.setStyle(r.val, 'left', `calc(${end.toFixed(2)}% + 7px)`);
+        }
+      },
+    };
+  };
+
+  // an icicle with a fixed pool of segments per level: [{key, label, cls}] per level
+  S.LiveIcicle = function LiveIcicle(levelKeys) {
+    const node = el('div', { class: 'icicle live' });
+    const segs = [];
+    levelKeys.forEach((keys, li) => {
+      const row = el('div', { class: `ici-row ici-l${li}` });
+      for (const k of keys) {
+        const name = el('b', { text: '' }), val = el('span', { class: 'num', text: '' });
+        const n = el('div', { class: `ici-seg ${k.cls || S.PART_CLASS[k.key] || ''}`, hidden: true, dataset: { level: li, key: k.key } },
+          el('span', { class: 'seg-text' }, name, ' ', val));
+        segs.push({ li, key: k.key, node: n, name, val });
+        row.appendChild(n);
+      }
+      node.appendChild(row);
+    });
+    node.addEventListener('mousemove', (e) => {
+      const n = e.target.closest('.ici-seg');
+      const s = n && n._seg;
+      if (s) S.tipShow(e, [s.name, ['time', S.ms(s.value)], ['share of the total', S.pct(s.value / node._total, 1)], s.about || S.PART_ABOUT[s.key] || '']);
+    });
+    node.addEventListener('mouseleave', S.tipHide);
+    return {
+      node,
+      update(levels, total) {
+        node._total = total || 1;
+        for (const sg of segs) {
+          const s = (levels[sg.li] || []).find((x) => x.key === sg.key);
+          const on = !!(s && isNum(s.value) && s.value > 0);
+          S.show(sg.node, on);
+          if (!on) continue;
+          sg.node._seg = Object.assign({ name: s.label || S.PART_LABEL[s.key] || s.key }, s);
+          const left = (s.start / node._total) * 100, width = (s.value / node._total) * 100;
+          S.setStyle(sg.node, 'left', `${left.toFixed(3)}%`);
+          S.setStyle(sg.node, 'width', `${width.toFixed(3)}%`);
+          S.setClass(sg.node, 'hl', !!s.hl);
+          // the label shows only when the segment is wide enough for it (decided from the width, not from layout)
+          const room = width / 100 * (node.clientWidth || 900);
+          const label = s.label || S.PART_LABEL[s.key] || s.key;
+          const valText = `${S.ms(s.value)}${s.pct !== false ? ' · ' + S.pct(s.value / node._total) : ''}`;
+          S.setText(sg.name, room > label.length * 7 + 12 ? label : '');
+          S.setText(sg.val, room > (label.length + valText.length) * 6.6 + 16 ? valText : (room > valText.length * 6.6 + 10 && room <= label.length * 7 + 12 ? valText : ''));
+        }
+      },
+    };
+  };
+
+  // the request scatter: `capacity` pooled marks, pooled axes, bands, gap markers and the median line
+  S.LiveScatter = function LiveScatter(opts) {
+    const o = Object.assign({ height: 280, capacity: 320 }, opts || {});
+    const node = el('div', { class: 'chart-host live-scatter' });
+    const s = svg('svg', { class: 'scatter', role: 'img', 'aria-label': o.aria || '' });
+    const gGrid = svg('g'), gBands = svg('g'), gTicks = svg('g'), gGaps = svg('g'), gPts = svg('g');
+    const median = svg('path', { class: 'median-line', d: '' });
+    const axis = svg('line', { class: 'axis' });
+    const xLabel = svg('text', { class: 'axis-label', 'text-anchor': 'end', text: '' });
+    const empty = svg('text', { class: 'empty-svg', 'text-anchor': 'middle', text: '' });
+    s.append(gGrid, gBands, axis, gTicks, xLabel, gGaps, median, gPts, empty);
+    node.appendChild(s);
+    const pool = (g, n, make) => Array.from({ length: n }, () => { const x = make(); g.appendChild(x.root || x); return x; });
+    const yTicks = pool(gGrid, 8, () => { const l = svg('line', { class: 'grid' }), t = svg('text', { class: 'tick num', 'text-anchor': 'end', text: '' }); const r = svg('g', null, l, t); return { root: r, l, t }; });
+    const xTicks = pool(gTicks, 14, () => { const m = svg('line', { class: 'tick-mark' }), t = svg('text', { class: 'tick num', text: '' }); const r = svg('g', null, m, t); return { root: r, m, t }; });
+    const bands = pool(gBands, 24, () => { const rect = svg('rect', { class: 'band' }), t = svg('text', { class: 'band-label', text: '' }); const r = svg('g', null, rect, t); return { root: r, rect, t }; });
+    const gaps = pool(gGaps, 6, () => { const l = svg('line', { class: 'gap-line' }), t = svg('text', { class: 'gap-label', text: '' }); const r = svg('g', null, l, t); return { root: r, l, t }; });
+    const pts = pool(gPts, o.capacity, () => {
+      const ring = svg('circle', { class: 'out-ring', r: 8 }), mark = svg('path', { class: 'mark', d: '' }), hit = svg('circle', { class: 'hit', r: 9 });
+      const r = svg('g', { class: 'pt' }, ring, mark, hit);
+      return { root: r, ring, mark, hit };
+    });
+    pts.forEach((p, i) => { p.root.dataset.i = i; S.show(p.root, false); });
+    [...yTicks, ...xTicks, ...bands, ...gaps].forEach((x) => S.setAttr(x.root, 'visibility', 'hidden'));
+    let cur = [];
+    s.addEventListener('mousemove', (e) => {
+      const g = e.target.closest('.pt');
+      const p = g && cur[Number(g.dataset.i)];
+      if (p && p.tip) S.tipShow(e, typeof p.tip === 'function' ? p.tip() : p.tip); else S.tipHide();
+    });
+    s.addEventListener('mouseleave', S.tipHide);
+    s.addEventListener('click', (e) => {
+      const g = e.target.closest('.pt');
+      const p = g && cur[Number(g.dataset.i)];
+      if (p && p.onclick) p.onclick(e);
+    });
+    const f = (v) => v.toFixed(1);
+    const shape = (kind, x, y, r) => {
+      if (kind === 'follow-up') return `M${f(x)} ${f(y - r * 1.25)}L${f(x + r * 1.25)} ${f(y)}L${f(x)} ${f(y + r * 1.25)}L${f(x - r * 1.25)} ${f(y)}Z`;
+      if (kind === 'long prompt') return `M${f(x)} ${f(y - r * 1.3)}L${f(x + r * 1.2)} ${f(y + r * 0.9)}L${f(x - r * 1.2)} ${f(y + r * 0.9)}Z`;
+      return `M${f(x - r)} ${f(y)}a${f(r)} ${f(r)} 0 1 0 ${f(2 * r)} 0a${f(r)} ${f(r)} 0 1 0 ${f(-2 * r)} 0`;
+    };
+    return {
+      node,
+      update(points, uo) {
+        const u = Object.assign({}, o, uo || {});
+        const W = Math.max(280, node.clientWidth || 600), H = u.height;
+        S.setAttr(s, 'viewBox', `0 0 ${W} ${H}`); S.setAttr(s, 'width', W); S.setAttr(s, 'height', H);
+        const m = { l: 44, r: 12, t: 10, b: 30 };
+        const P = points.filter((p) => isNum(p.x) && isNum(p.y) && (!u.xLog || p.x > 0)).slice(0, u.capacity);
+        cur = P;
+        S.setText(empty, P.length ? '' : (u.empty || 'No requests yet.'));
+        S.setAttr(empty, 'x', W / 2); S.setAttr(empty, 'y', H / 2);
+        let x0 = P.length ? Math.min(...P.map((p) => p.x)) : 0, x1 = P.length ? Math.max(...P.map((p) => p.x)) : 1;
+        if (u.xTime) for (const b of u.bands || []) { x0 = Math.min(x0, b.from); x1 = Math.max(x1, b.to); }
+        if (x1 === x0) { x0 -= 1; x1 += 1; }
+        const y0 = u.y0 !== undefined ? u.y0 : Math.min(0, ...P.map((p) => p.y));
+        const y1 = Math.max(1e-9, ...P.map((p) => p.y)) * 1.08;
+        const lx = (v) => (u.xLog ? Math.log10(v) : v);
+        const X = (v) => m.l + ((lx(v) - lx(x0)) / (lx(x1) - lx(x0) || 1)) * (W - m.l - m.r);
+        const Y = (v) => H - m.b - ((v - y0) / (y1 - y0 || 1)) * (H - m.t - m.b);
+        const yt = S.niceTicks(y0, y1, 5);
+        yTicks.forEach((t, i) => {
+          const v = yt[i];
+          S.setAttr(t.root, 'visibility', v === undefined ? 'hidden' : 'visible');
+          if (v === undefined) return;
+          S.setAttr(t.l, 'x1', m.l); S.setAttr(t.l, 'x2', W - m.r); S.setAttr(t.l, 'y1', Y(v).toFixed(1)); S.setAttr(t.l, 'y2', Y(v).toFixed(1));
+          S.setAttr(t.t, 'x', m.l - 6); S.setAttr(t.t, 'y', (Y(v) + 4).toFixed(1)); S.setText(t.t, u.yFmt ? u.yFmt(v) : S.num(v, 0));
+        });
+        S.setAttr(axis, 'x1', m.l); S.setAttr(axis, 'x2', W - m.r); S.setAttr(axis, 'y1', H - m.b); S.setAttr(axis, 'y2', H - m.b);
+        S.setAttr(xLabel, 'x', W - m.r); S.setAttr(xLabel, 'y', H - 2); S.setText(xLabel, u.xLabel || '');
+        let xt;
+        if (u.xTicks) xt = u.xTicks;
+        else if (u.xLog) { xt = []; for (let e = Math.floor(Math.log10(x0)); e <= Math.ceil(Math.log10(x1)); e++) for (const k of [1, 3]) { const v = k * 10 ** e; if (v >= x0 && v <= x1) xt.push({ x: v, label: S.int(v) }); } }
+        else if (u.xTime) { const span = x1 - x0; const step = [60, 300, 600, 900, 1800, 3600, 7200, 10800].find((q) => span / q <= 6) || 21600; xt = []; for (let v = Math.ceil(x0 / step) * step; v <= x1; v += step) xt.push({ x: v, label: S.clock(v) }); }
+        else xt = S.niceTicks(x0, x1, Math.max(3, Math.floor(W / 110))).map((v) => ({ x: v, label: u.xFmt ? u.xFmt(v) : S.num(v, 0) }));
+        let lastPx = -1e9, k = 0;
+        for (const t of xt) {
+          const px = X(t.x);
+          if (px - lastPx < 46 || k >= xTicks.length) continue;
+          lastPx = px;
+          const tk = xTicks[k++];
+          S.setAttr(tk.root, 'visibility', 'visible');
+          S.setAttr(tk.m, 'x1', px.toFixed(1)); S.setAttr(tk.m, 'x2', px.toFixed(1)); S.setAttr(tk.m, 'y1', H - m.b); S.setAttr(tk.m, 'y2', H - m.b + 4);
+          S.setAttr(tk.t, 'x', px.toFixed(1)); S.setAttr(tk.t, 'y', H - m.b + 16); S.setAttr(tk.t, 'text-anchor', px > W - 70 ? 'end' : u.xTicks ? 'start' : 'middle');
+          S.setText(tk.t, t.label);
+        }
+        for (; k < xTicks.length; k++) S.setAttr(xTicks[k].root, 'visibility', 'hidden');
+        const B = (u.bands || []).filter((b) => !(b.to < x0 || b.from > x1)).slice(0, bands.length);
+        bands.forEach((bd, i) => {
+          const b = B[i];
+          S.setAttr(bd.root, 'visibility', b ? 'visible' : 'hidden');
+          if (!b) return;
+          const a = X(Math.max(b.from, x0)), z = X(Math.min(b.to, x1));
+          S.setAttr(bd.rect, 'class', `band band-${b.kind}`);
+          S.setAttr(bd.rect, 'x', a.toFixed(1)); S.setAttr(bd.rect, 'y', m.t); S.setAttr(bd.rect, 'width', Math.max(2, z - a).toFixed(1)); S.setAttr(bd.rect, 'height', H - m.t - m.b);
+          S.setAttr(bd.t, 'class', `band-label band-${b.kind}`); S.setAttr(bd.t, 'x', (a + 3).toFixed(1)); S.setAttr(bd.t, 'y', m.t + 11);
+          S.setText(bd.t, z - a > 40 ? (b.short || b.label || '') : '');
+        });
+        const G = (u.gaps || []).slice(0, gaps.length);
+        gaps.forEach((gp, i) => {
+          const g = G[i];
+          S.setAttr(gp.root, 'visibility', g ? 'visible' : 'hidden');
+          if (!g) return;
+          const px = X(g.x).toFixed(1);
+          S.setAttr(gp.l, 'x1', px); S.setAttr(gp.l, 'x2', px); S.setAttr(gp.l, 'y1', m.t); S.setAttr(gp.l, 'y2', H - m.b);
+          S.setAttr(gp.t, 'x', (Number(px) + 4).toFixed(1)); S.setAttr(gp.t, 'y', m.t + 26); S.setText(gp.t, g.label);
+        });
+        let d = '';
+        if (u.median) {
+          const sorted = P.filter((p) => !p.calib).sort((a, b) => a.x - b.x);
+          const kk = Math.max(3, Math.round(sorted.length / 10));
+          sorted.forEach((p, i) => {
+            const win = sorted.slice(Math.max(0, i - kk), i + 1).map((q) => q.y);
+            d += `${i && !p.cut ? 'L' : 'M'}${X(p.x).toFixed(1)} ${Y(S.median(win)).toFixed(1)}`;
+          });
+          if (sorted.length < 5) d = '';
+        }
+        S.setAttr(median, 'd', d);
+        pts.forEach((pt, i) => {
+          const p = P[i];
+          S.show(pt.root, !!p);
+          if (!p) return;
+          const x = X(p.x), y = Y(p.y);
+          S.setAttr(pt.root, 'class', `pt ${p.hl ? 'hl' : ''} ${p.calib ? 'calib' : ''} ${p.onclick ? 'clickable' : ''}`);
+          S.setAttr(pt.mark, 'class', `mark ${p.kind === 'prompt only' ? 'hollow' : ''}`);
+          S.setAttr(pt.mark, 'd', shape(p.kind, x, y, p.hl ? 5.5 : 4.2));
+          S.setAttr(pt.ring, 'cx', x.toFixed(1)); S.setAttr(pt.ring, 'cy', y.toFixed(1)); S.setAttr(pt.ring, 'visibility', p.out ? 'visible' : 'hidden');
+          S.setAttr(pt.hit, 'cx', x.toFixed(1)); S.setAttr(pt.hit, 'cy', y.toFixed(1));
+        });
+      },
+    };
   };
 })();

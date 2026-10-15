@@ -22,7 +22,8 @@ from .strata import StrataError
 
 MAX_POST = 64 * 1024
 STATIC = {name: "text/javascript; charset=utf-8" for name in
-          ("lib.js", "charts.js", "diagram.js", "panel.js", "now.js", "runs.js", "tune.js", "settings.js", "app.js",
+          ("lib.js", "charts.js", "diagram.js", "panel.js", "now.js", "runs.js", "compare.js", "expertmap.js", "tune.js",
+           "settings.js", "app.js",
            "vendor/chart-4.4.1.umd.js")}
 STATIC.update({"style.css": "text/css; charset=utf-8", "favicon.svg": "image/svg+xml"})
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "
@@ -39,7 +40,8 @@ class StudioApp:
     """What the handlers share."""
 
     def __init__(self, *, strata_url, results_dir, config_path, key, studio_key, host, port, client, poller,
-                 flow, reports, state, web_dir, started_at, allow_hosts=(), engine_log=None, read_only=False):
+                 flow, reports, state, web_dir, started_at, allow_hosts=(), engine_log=None, read_only=False, host_monitor=None, profiles=None,
+                 defaults_run=None):
         self.strata_url, self.results_dir, self.config_path = strata_url, results_dir, config_path
         self.key_set = bool(key)
         self.studio_key = studio_key                   # None: no bearer needed on /api/
@@ -50,6 +52,7 @@ class StudioApp:
         self.allow_hosts = [h.strip().lower() for h in allow_hosts if h and h.strip()]
         self.engine_log = engine_log
         self.read_only = bool(read_only)
+        self.host_monitor, self.profiles, self.defaults_run = host_monitor, profiles, defaults_run
 
     @staticmethod
     def split_host(header: str) -> tuple[str, str | None]:
@@ -209,7 +212,8 @@ class StudioApp:
             if x.get("window_ms") or x.get("prompt_groups_ms"):
                 return {k: x.get(k) for k in ("seq", "seen_at", "window_ms", "ms_per_window", "prompt_groups_ms",
                                               "prompt_ms", "decode_ms", "decode_tok_s", "hit_rate", "pcie_share",
-                                              "cpu_experts")}
+                                              "cpu_experts", "cpu_entries", "vram_hits", "pcie_per_window", "swaps",
+                                              "kv_hit", "tokens_per_window", "windows", "hits", "lookups")}
         return None
 
     def tunes_doc(self) -> dict:
@@ -232,7 +236,22 @@ class StudioApp:
             out.append(t)
         return {"tunes": out}
 
+    def host_doc(self) -> dict:
+        if self.host_monitor is None:
+            return {"at": None, "cpu": None, "gpu": None, "history": {}, "core_history": {}, "gpu_error": None,
+                    "pool_cpus": None, "host_cpu": None}
+        pool = (self.engine_log.facts() if self.engine_log else {}).get("pool") or {}
+        return self.host_monitor.doc(pool.get("cpus"), pool.get("host_cpu"))
+
+    def experts_doc(self, ranks: bool) -> dict:
+        if self.profiles is None:
+            return {"config": False}
+        slots = (self.poller.engine or {}).get("expert_slots")
+        return self.profiles.doc(slots if isinstance(slots, int) else None, include_ranks=ranks)
+
     def busy_reason(self) -> str | None:
+        if self.defaults_run is not None and self.defaults_run.state == "running":
+            return "A profile run with the engine defaults is going."
         if self.flow.running():
             return "A tune is running; Strata writes the config file at its end. Wait for it to finish."
         tune = self.poller.tune_status().get("tune")
@@ -418,6 +437,17 @@ def make_handler(app: StudioApp):
                 return self._apply_preview((query.get("report") or [""])[0])
             if path == "/api/hardware":
                 return self._json(200, app.hardware_doc())
+            if path == "/api/host":
+                return self._json(200, app.host_doc())
+            if path == "/api/experts":
+                return self._json(200, app.experts_doc((query.get("ranks") or ["1"])[0] != "0"))
+            if path == "/api/run-defaults":
+                return self._json(200, app.defaults_run.snapshot() if app.defaults_run else {"state": "idle", "lines": []})
+            if path == "/api/settings/file":
+                try:
+                    return self._json(200, configwrite.file_doc(app.config_path))
+                except configwrite.ConfigWriteError as e:
+                    return self._error(e.status, e.message)
             if path == "/api/tune-flow":
                 return self._json(200, app.tune_flow_doc())
             if path == "/api/run-profile":
@@ -484,6 +514,8 @@ def make_handler(app: StudioApp):
                 long, err = self._long_of(body)
                 if err:
                     return self._error(400, err)
+                if app.defaults_run is not None and app.defaults_run.state == "running":
+                    return self._error(409, "A profile run with the engine defaults is going.")
                 try:
                     ident = app.flow.start(long)
                 except FlowError as e:
@@ -503,6 +535,16 @@ def make_handler(app: StudioApp):
                 return self._notes(body)
             if path == "/api/settings/apply":
                 return self._apply(body)
+            if path == "/api/settings/edit":
+                if body.get("confirm") is not True:
+                    return self._error(400, "The write needs \"confirm\": true.")
+                try:
+                    return self._json(200, configwrite.apply_edits(app.config_path, body.get("edits"), body.get("sha"),
+                                                                   app.busy_reason()))
+                except configwrite.ConfigWriteError as e:
+                    return self._error(e.status, e.message)
+            if path == "/api/run-defaults":
+                return self._run_defaults()
             self._error(404, "Not found.")
 
         def _run_profile(self, body: dict):
@@ -530,6 +572,24 @@ def make_handler(app: StudioApp):
                 return self._error(r.status if 400 <= r.status < 600 and r.status != 401 else 502, r.message)
             p.studio_run = True
             p.refresh_status()
+            self._json(200, {"status": "started"})
+
+        def _run_defaults(self):
+            if app.defaults_run is None:
+                return self._error(412, "The Studio needs --config for a run with the engine defaults.")
+            p = app.poller
+            if p.status == "unreachable":
+                return self._error(502, f"Strata does not answer at {app.strata_url}.")
+            busy = None
+            if app.flow.running():
+                busy = "A tune is running. Wait for it to end."
+            raw = p.tune_status()
+            if (raw.get("state") == "running") or ((raw.get("tune") or {}).get("state") == "running"):
+                busy = "Strata is running a profile or a tune. Wait for it to end."
+            try:
+                app.defaults_run.start(busy)
+            except ValueError as e:
+                return self._error(409, str(e))
             self._json(200, {"status": "started"})
 
         def _notes(self, body: dict):
