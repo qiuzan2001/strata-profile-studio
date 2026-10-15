@@ -1,4 +1,3 @@
-import copy
 import hashlib
 import json
 import os
@@ -9,7 +8,6 @@ import unittest
 
 import support
 from fakestrata import FakeStrata, request_doc
-from studiolib import state as state_mod
 from studiolib.state import State, StateError
 from support import ROOT, request, start_studio, wait_for
 
@@ -236,7 +234,6 @@ class Checks(Base):
         self.assertIn("--key", r.stderr)
 
     def test_with_a_key_the_bearer_is_required(self):
-        s = self.studio(key=KEY, host="127.0.0.2") if False else None
         fake = FakeStrata(self.results, key=KEY).start()
         self.addCleanup(fake.stop)
         s = start_studio(self, fake, self.results, key=KEY, host="127.0.0.2", state_path=self.tmp / "k.json")
