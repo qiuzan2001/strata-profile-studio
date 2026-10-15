@@ -365,9 +365,11 @@
     const n = vals.length;
     const X = (i) => m.l + ((i + 0.5) / n) * (W - m.l - m.r);
     const Y = (v) => H - m.b - ((v - y0) / (y1 - y0)) * (H - m.t - m.b);
-    for (const t of niceTicks(y0, y1, 4)) {
+    const yt = niceTicks(y0, y1, 4);
+    const dec = yt.length > 1 && yt[1] - yt[0] < 1 ? 1 : 0;
+    for (const t of yt) {
       s.appendChild(svg('line', { class: 'grid', x1: m.l, x2: W - m.r, y1: Y(t), y2: Y(t) }));
-      s.appendChild(svg('text', { class: 'tick', x: m.l - 5, y: Y(t) + 4, 'text-anchor': 'end', text: S.num(t, 0) }));
+      s.appendChild(svg('text', { class: 'tick', x: m.l - 5, y: Y(t) + 4, 'text-anchor': 'end', text: S.num(t, dec) }));
     }
     vals.forEach((v, i) => {
       const cx = X(i);
@@ -444,10 +446,10 @@
       r.bar = el('div', { class: 'bar k-bar' });
       r.band = el('i', { class: 'bar-band', hidden: true });
       r.val = el('span', { class: 'bar-val num', text: '' });
-      r.track = el('div', { class: 'bar-track' }, r.bar, r.band, r.val);
+      r.track = el('div', { class: 'bar-track' }, r.bar, r.band);
       r.icon = el('span', { class: 'bar-icon' });
       r.row = el('div', { class: 'bar-row with-note', dataset: { key: k } },
-        el('div', { class: 'bar-label' }, r.icon, el('div', { class: 'bar-names' }, r.name, r.note)), r.track);
+        el('div', { class: 'bar-label' }, r.icon, el('div', { class: 'bar-names' }, r.name, r.note)), r.track, r.val);
       node.appendChild(r.row);
     }
     node.addEventListener('click', (e) => {
@@ -486,9 +488,7 @@
             S.setStyle(r.band, 'left', `${((sp[0] / max) * 100).toFixed(2)}%`);
             S.setStyle(r.band, 'width', `${Math.max(0.5, ((sp[1] - sp[0]) / max) * 100).toFixed(2)}%`);
           }
-          const end = Math.max(w, sp ? (sp[1] / max) * 100 : 0);
           S.setText(r.val, it.text !== undefined ? it.text : `${o.fmt(it.value)}${o.unit ? ' ' + o.unit : ''}`);
-          S.setStyle(r.val, 'left', `calc(${end.toFixed(2)}% + 7px)`);
         }
       },
     };

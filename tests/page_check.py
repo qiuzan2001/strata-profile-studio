@@ -30,6 +30,20 @@ ROOT = Path(__file__).resolve().parents[1]
 TESTS = ROOT / "tests"
 FIXTURES = TESTS / "fixtures" / "reports"
 RESULTS = []
+LIVE = "#view-now .tiles, #view-now .pc-card, #view-now .grid > .card:not(.map-card), #status, #banner"
+OBSERVE = """() => { window.__m = {added: 0, removed: 0, attr: 0, text: 0, where: {}};
+  const live = [...document.querySelectorAll('%s')];
+  const inLive = (n) => live.some((r) => r.contains(n));
+  new MutationObserver((ms) => { for (const m of ms) {
+    if (!inLive(m.target)) continue;
+    if (m.type === 'childList') {
+      window.__m.added += m.addedNodes.length; window.__m.removed += m.removedNodes.length;
+      if (m.addedNodes.length || m.removedNodes.length) { const k = (m.target.className && m.target.className.baseVal !== undefined ? m.target.className.baseVal : m.target.className) || m.target.tagName; window.__m.where[k] = (window.__m.where[k] || 0) + 1; }
+    } else if (m.type === 'attributes') window.__m.attr++; else window.__m.text++; } })
+    .observe(document.body, {subtree: true, childList: true, attributes: true, characterData: true}); }""" % LIVE
+BOXES = """() => [...document.querySelectorAll('%s')].flatMap((r) => [r, ...r.querySelectorAll('*')])
+  .filter((n) => { const cs = getComputedStyle(n); return cs.display !== 'inline' && cs.display !== 'none' && !(n instanceof SVGElement && n.tagName !== 'svg'); })
+  .map((n) => { const b = n.getBoundingClientRect(); return [Math.round(b.x), Math.round(b.y), Math.round(b.width), Math.round(b.height)].join(','); })""" % LIVE
 SIZES = {"light": ({"width": 1400, "height": 900}, "light"), "dark": ({"width": 1400, "height": 900}, "dark"),
          "phone": ({"width": 390, "height": 844}, "light")}
 CONFIG = {"exe": "strata", "args": ["--pack", "demo", "--expert-cache", "auto", "--spec", "4", "--max-context", "262144",
@@ -174,13 +188,29 @@ def main():
             seq = live[-1]["seq"] if live else 1
             req = "agent-1" if any(q["id"] == "agent-1" for q in get(f"{sc.base}/api/reports/{pair[1]}")["requests"]) else "chat-1"
             routes = [("now", "now"), ("request-live", f"now/r/{seq}"), ("runs", "runs"), ("run", f"runs/{pair[1]}"),
-                      ("request-report", f"runs/{pair[1]}/r/{req}"), ("compare", f"compare/{pair[0]}/{pair[1]}"),
-                      ("tune", "tune"), ("settings", "settings")]
+                      ("request-report", f"runs/{pair[1]}/r/{req}"), ("compare-pair", f"compare/{pair[0]}/{pair[1]}"),
+                      ("compare", "compare"), ("tune", "tune"), ("settings", "settings")]
             shoot(browser, sc, out, routes, all_sizes)
-            # the diagram updates in place: no node is added in a minute of 1 s updates
+            # no flicker: 30 s of live updates (hardware every 1 s, a new request every 6 s) change attributes and text
+            # only; no node is added or removed in the live regions, and the layout boxes stay where they are
             page = browser.new_page(viewport={"width": 1400, "height": 900})
             page.goto(f"{sc.base}/#now")
-            time.sleep(4)
+            time.sleep(5)
+            page.evaluate(OBSERVE)
+            time.sleep(30)
+            m = page.evaluate("window.__m")
+            record("flicker: no node added or removed in the live regions in 30 s", m["added"] == 0 and m["removed"] == 0,
+                   f"added {m['added']}, removed {m['removed']}, attribute changes {m['attr']}, text changes {m['text']}, where {m['where']}")
+            record("flicker: the live regions changed (attributes and text)", m["attr"] + m["text"] > 0, f"{m['attr'] + m['text']} changes")
+            page.evaluate("window.scrollTo(0, 0)")
+            b0 = page.evaluate(BOXES)
+            page.screenshot(path=str(out / "flicker-t0.png"))
+            time.sleep(1)
+            b1 = page.evaluate(BOXES)
+            page.screenshot(path=str(out / "flicker-t1.png"))
+            moved = sum(1 for x, y in zip(b0, b1) if x != y) + abs(len(b0) - len(b1))
+            record("flicker: the layout boxes 1 s apart are identical", moved == 0, f"{len(b0)} boxes, {moved} moved")
+            (out / "flicker-proof.json").write_text(json.dumps({"mutations_30s": m, "boxes": len(b0), "boxes_moved_1s": moved}, indent=1))
             n0 = page.evaluate("document.querySelectorAll('*').length")
             seen = set()
             for _ in range(10 if a.quick else 30):
@@ -192,6 +222,17 @@ def main():
             record("diagram: the readings move", len(seen) > 1, f"CPU readings seen: {sorted(seen)}")
             limit = page.evaluate("[...document.querySelectorAll('.blk.limit')].map(n => n.dataset.block).join(',')")
             record("diagram: a bottleneck block is highlighted", bool(limit), limit)
+            # settings: a hand edit is staged, shown in the edit list, and written with a .bak
+            page.goto(f"{sc.base}/#settings")
+            time.sleep(3)
+            num = page.locator("input.ctl-num").first
+            num.fill("0.45")
+            num.dispatch_event("change")
+            time.sleep(0.5)
+            staged = page.evaluate("document.querySelector('.edits-card h4').textContent")
+            record("settings: an edit is staged in the edit list", "1 setting changed" in staged, staged)
+            page.screenshot(path=str(out / "main-settings-edit-light.png"), full_page=True)
+            page.locator("button.btn", has_text="Discard the edits").click()
             # settings: write the config copy with the settings of the tune's before run (or the oldest run)
             before_cfg = sc.config.read_text()
             target = next((r["id"] for r in reports if any(x["changed"] for x in get(
@@ -200,7 +241,7 @@ def main():
             page.evaluate(f"localStorage.setItem('studio.settings.report', JSON.stringify('{target}'))")
             page.reload()
             time.sleep(3)
-            btn = page.locator("button.danger", has_text="Write")
+            btn = page.locator(".card:has(h3:text('Settings of a run')) button.danger", has_text="Write")
             if btn.count() and btn.first.is_enabled():
                 btn.first.click()
                 page.screenshot(path=str(out / "main-settings-confirm-light.png"))
@@ -271,7 +312,7 @@ def main():
         for name, kw in states:
             sc = Scenario(a, name, **kw)
             try:
-                routes = [("now", "now"), ("runs", "runs"), ("tune", "tune")]
+                routes = [("now", "now"), ("runs", "runs"), ("compare", "compare"), ("tune", "tune")]
                 if name in ("unreachable", "key"):
                     routes.append(("settings", "settings"))
                 shoot(browser, sc, out, routes, ["light", "phone"] if not a.quick else ["light"], settle=3.5)
@@ -281,7 +322,7 @@ def main():
                 text = page.evaluate("document.getElementById('banner').innerText + ' ' + document.querySelector('main').innerText")
                 expect = {"first-run": "No requests since Strata started", "no-reports": "No requests since Strata started",
                           "profile-off": "Profiling is off", "key": "Strata needs an API key", "unloaded": "The model is not loaded",
-                          "unreachable": "Strata does not answer", "tuning-elsewhere": "Strata is tuning",
+                          "unreachable": "Strata does not answer", "tuning-elsewhere": "Strata runs a tune",
                           "read-only": "read-only"}[name]
                 if name == "read-only":
                     text += page.evaluate("document.querySelector('header').innerText")

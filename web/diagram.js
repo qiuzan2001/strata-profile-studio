@@ -109,7 +109,7 @@
   // the experts panel: the flow (SVG, fixed paths) and the figures
   function experts() {
     const X = R.exp = { paths: {}, labels: {}, facts: {} };
-    const s = svg('svg', { class: 'flow', viewBox: '0 0 800 236', role: 'img', 'aria-label': 'Expert flow: RAM, CPU pool, PCIe, VRAM expert cache, GPU' });
+    const s = svg('svg', { class: 'flow', viewBox: '0 0 800 256', role: 'img', 'aria-label': 'Expert flow: RAM, CPU pool, PCIe, VRAM expert cache, GPU' });
     const node = (x, y, w, h, title, cls) => {
       const st = svg('text', { class: 'fn-sub num', x: x + 10, y: y + 38, text: '' });
       s.append(svg('rect', { class: `fn ${cls}`, x, y, width: w, height: h, rx: 8 }), svg('text', { class: 'fn-title', x: x + 10, y: y + 21, text: title }), st);
@@ -132,7 +132,7 @@
     X.pcieSub = node(330, 154, 150, 52, 'PCIe', 'fn-pcie');
     X.vramSub = node(520, 80, 130, 58, 'VRAM cache', 'fn-vram');
     X.gpuSub = node(690, 80, 104, 58, 'GPU', 'fn-gpu');
-    for (const [k, x, y, anchor] of [['computed', 490, 40, 'start'], ['copied', 405, 226, 'middle'], ['swapped', 170, 226, 'start'], ['hit', 585, 66, 'middle']]) {
+    for (const [k, x, y, anchor] of [['computed', 490, 40, 'start'], ['copied', 405, 226, 'middle'], ['swapped', 405, 246, 'middle'], ['hit', 585, 66, 'middle']]) {
       X.labels[k] = svg('text', { class: `fl-label num fl-${k}`, x, y, 'text-anchor': anchor, text: '' });
       s.appendChild(X.labels[k]);
     }
@@ -192,7 +192,7 @@
         link('bus', 'memory bus'),
         block('cpu', 'CPU', { unit: '% busy', extra: coreGrid(), facts: [['temp', 'package temperature'], ['power', 'package power'], ['pool', 'pool workers']], sparks: [['busy', 'busy', '%'], ['temp', 'temperature', '°C'], ['power', 'package power', 'W']] }),
         link('pcie', 'PCIe', { sparks: [['rx', 'to the GPU', 'MB/s'], ['tx', 'from the GPU', 'MB/s']] }),
-        block('vram', 'VRAM', { unit: 'GiB used', meter: ['k-gemm', 'm-other', 'm-free'], facts: [['cache', 'expert cache'], ['free', 'free after load'], ['total', 'installed']], sparks: [['used', 'used', 'GiB'], ['free', 'free', 'MiB']] }),
+        block('vram', 'VRAM', { unit: 'GiB used', meter: ['k-gemm', 'm-other', 'm-free'], facts: [['cache', 'expert cache'], ['free', 'free'], ['total', 'installed']], sparks: [['used', 'used', 'GiB'], ['free', 'free', 'MiB']] }),
         link('card', ''),
         block('gpu', 'GPU', { unit: '% busy', extra: gpuRows(), sparks: [['busy', 'busy', '%'], ['power', 'power', 'W'], ['temp', 'temperature', '°C'], ['sm', 'SM clock', 'MHz']] }));
       return el('div', { class: 'pc-module' }, row, experts(), sum.node);
@@ -213,7 +213,7 @@
       S.setText(R.disk.facts.write.v, isNum(now.disk_write_mb) ? `${S.num(now.disk_write_mb, 1)} MB/s` : 'no counters');
       setSpark(R.disk.sparks.read, hist.disk_read_mb, null, (v) => S.num(v, 1));
       setSpark(R.disk.sparks.write, ring('disk_w', now.disk_write_mb), null, (v) => S.num(v, 1));
-      S.setText(R['l-disk'].value, isNum(now.disk_read_mb) ? S.mbps(now.disk_read_mb) : '');
+      S.setText(R['l-disk'].value, '');
       // ---- RAM
       const ramU = now.ram_used, ramT = now.ram_total;
       num(R.ram.big, isNum(ramU) ? ramU / 2 ** 30 : null, (v) => v.toFixed(1));

@@ -135,12 +135,21 @@ def build(a) -> DemoStrata:
     return fake
 
 
-def animate(fake: DemoStrata, decoding: bool, stop: threading.Event):
-    """Moves the hardware readings once a second; `decoding`: as if a long decode were running."""
+def animate(fake: DemoStrata, decoding: bool, stop: threading.Event, samples=()):
+    """Moves the hardware readings once a second; `decoding`: as if a long decode were running, with a new request
+    every 6 s (the recorded samples again, each with a new prompt time so the Studio sees a new request)."""
     base = dict(fake.hardware)
     t0 = time.time()
+    k = 0
     while not stop.wait(1.0):
         t = time.time() - t0
+        if decoding and samples and int(t) % 6 == 0:
+            s = dict(samples[k % len(samples)])
+            k += 1
+            if isinstance(s.get("prompt_ms"), (int, float)):
+                s["prompt_ms"] = s["prompt_ms"] + k             # a different stamp: a new request for the poller
+            with fake.lock:
+                fake.last = last_doc(s)
         wave = 0.5 + 0.5 * math.sin(t / 3)
         with fake.lock:
             hw = fake.hardware
@@ -170,7 +179,10 @@ def main(argv=None):
     a = ap.parse_args(argv)
     fake = build(a).start()
     stop = threading.Event()
-    threading.Thread(target=animate, args=(fake, a.state == "decoding", stop), daemon=True).start()
+    replay = []
+    if a.live:
+        replay = [s for s in json.loads(Path(a.live).read_text())["samples"] if s.get("window_ms") and not s.get("late")][-20:]
+    threading.Thread(target=animate, args=(fake, a.state == "decoding", stop, replay), daemon=True).start()
     if a.state == "tuning-elsewhere":                  # a tune started from Strata's own page, not the Studio
         import urllib.request
         urllib.request.urlopen(urllib.request.Request(f"{fake.url}/profile/tune", data=b"{}", method="POST",

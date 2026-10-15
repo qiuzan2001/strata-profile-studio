@@ -190,6 +190,7 @@
       let verdict = '';
       if (kept && best && !S.same(kept, best) && keptV && bestV && isNum(bestV.median) && isNum(keptV.median)) verdict = `Best ${best} (${S.num(bestV.median, 1)} tok/s) is not kept: ${S.signed((bestV.median - keptV.median) / keptV.median * 100, 1, ' %')} against ${kept} is less than the ${OBJECTIVE.minGain} % the calibration needs.`;
       else if (kept) verdict = `Kept: ${kept === 'default' ? 'the engine default' : kept}${st.was && !S.same(st.was, kept) ? ` (before the tune: ${st.was})` : ''}.`;
+      else if (running && st.best && bestV && isNum(bestV.median)) verdict = `Best so far: ${st.best} (${S.num(bestV.median, 1)} tok/s). The kept value is known when the calibration ends.`;
       else if (running && st.values.length) verdict = 'Measurement in progress.';
       const rounds = seq.points.filter((p) => p.key === st.key);
       const card = S.card({ q: `${STEP_NAME[st.key] || st.label} candidates`, sub: `${STEP_FLAG[st.key] || ''} · decode speed, tok/s · ${st.kind === 'sweep' ? `${OBJECTIVE.rounds} rounds in one engine start` : 'one engine start per value'}`, verdict, cls: 'sweep-card' }, host);
