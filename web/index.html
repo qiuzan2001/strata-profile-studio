@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Strata Profile Studio</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="#now" aria-label="Strata Profile Studio, Now">
+    <img src="/static/favicon.svg" alt="" width="22" height="22">
+    <span>Strata Profile Studio</span>
+  </a>
+  <nav class="tabs" aria-label="Views">
+    <a class="tab" href="#now" data-view="now">Now</a>
+    <a class="tab" href="#runs" data-view="runs">Runs</a>
+    <a class="tab" href="#tune" data-view="tune">Tune</a>
+    <a class="tab" href="#settings" data-view="settings">Settings</a>
+  </nav>
+  <span class="grow"></span>
+  <span id="readonly" class="chip small" hidden>read-only</span>
+  <span id="status" class="status" role="status"><i class="dot idle"></i><span class="status-text">connecting…</span></span>
+  <button id="theme" class="btn icon" type="button" title="Light or dark" aria-label="Switch between light and dark">◐</button>
+</header>
+<div id="banner" class="banners"></div>
+<main>
+  <section id="view-now" class="view" aria-label="Now"></section>
+  <section id="view-runs" class="view" aria-label="Runs" hidden></section>
+  <section id="view-tune" class="view" aria-label="Tune" hidden></section>
+  <section id="view-settings" class="view" aria-label="Settings" hidden></section>
+</main>
+<aside id="panel" class="panel" aria-label="Request" hidden></aside>
+<dialog id="dialog"></dialog>
+<div id="tip" class="tip" hidden></div>
+<div id="toasts" class="toasts" aria-live="polite"></div>
+<script src="/static/lib.js"></script>
+<script src="/static/charts.js"></script>
+<script src="/static/diagram.js"></script>
+<script src="/static/panel.js"></script>
+<script src="/static/now.js"></script>
+<script src="/static/runs.js"></script>
+<script src="/static/tune.js"></script>
+<script src="/static/settings.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
