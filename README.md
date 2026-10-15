@@ -50,6 +50,7 @@ you press Ctrl-C. Closing the browser tab does not stop anything: the polling an
 | `--key KEY` | `$STRATA_KEY` | Strata's API key. Prefer the environment variable: it stays out of `ps`. |
 | `--port N` | `8090` | The Studio's port. |
 | `--host ADDR` | `127.0.0.1` | The address to listen on. Anything but `127.0.0.1`, `::1` or `localhost` needs a key. |
+| `--allow-host HOST[:PORT]` | none | Also answer to this `Host` name (repeatable) while still listening on `--host` only: for a reverse proxy, see below. A name without a port allows any port. |
 | `--config PATH` | none | Strata's `strata-<model>.json`, opened read only: the Settings view shows its values. |
 | `--state PATH` | `studio-state.json` next to `studio.py` | The Studio's one file (tune records, notes). |
 | `--version` | | Print the version. |
@@ -83,14 +84,16 @@ run config's value, from Strata's `/profile/settings` when it has it, otherwise 
 
 ## How the comparison decides
 
-Every profile report repeats the same three chat questions, so their spread is the run-to-run noise of a decode on
-this PC and build. For a report, that spread is `(max − min) / median` of the three chat decode speeds, and for the
-hit rate it is `max − min`. A change counts only when it is larger than the noise allows: for medians of several runs
-the bigger of 3% and the two reports' spreads, for single runs (long context, prompt reads, agent turns) the bigger
-of 5% and 1.7 times the spread, and for a window part also more than 0.5 ms. Everything inside that is reported as
-"no measurable change", whatever its sign. The 3% is calibrate.py's own `MIN_GAIN`; the 1.7 comes from range being
-about 1.7 standard deviations of three samples, and a difference of two single runs being real at two standard
-deviations of the difference.
+A change counts only when it is larger than the noise of this PC, and the noise is **measured**, not assumed, whenever
+the results folder allows it. Two reports made with the same settings (the same PCIe share, draft floor, workers and
+expert tier, and the same GPU, model, quant and context) differ from each other only by noise; for each metric (per
+kind of request) the floor is the largest such difference found on disk, never less than 3% (calibrate.py's own
+`MIN_GAIN`). The verdict says where it came from ("noise floor from runs 3 and 4, same settings"). With no
+same-settings pair yet, the floors are fixed guesses (5% for speeds, 1 ms for a window part, 2 points for a hit rate)
+and the verdict says "(assumed floor, no same-settings pair measured yet)": run the profile twice with one setting to
+measure it. The three chat questions of one report are three different prompts, so their spread is never used. When
+at least five agent turns all move the same way, the verdict says so ("6 of 6 agent turns slower"), a sign test that
+can show a small real change even where each turn is inside its floor.
 
 ## What the Studio writes, and what it never touches
 
@@ -110,6 +113,21 @@ except for the one short chat request that loads the model again after a tune.
 - The page's Content-Security-Policy is `script-src 'self'`; it never uses `innerHTML` (a test greps for it) and
   draws text with `textContent`. Chart.js is vendored, so the page makes no request that leaves the PC.
 - The Studio calls a fixed list of Strata routes and never forwards a path the page names.
+
+### Behind a reverse proxy (tailscale serve)
+
+The Studio keeps listening on `127.0.0.1`; the proxy reaches it there, and `--allow-host` lets the proxy's name
+through the Host check (which is otherwise strict). With tailscale:
+
+```
+python3 studio.py --strata http://127.0.0.1:8080 --results ~/Strata/bench/results \
+    --allow-host ub01.char-logarithm.ts.net:8444
+tailscale serve --bg --https=8444 http://127.0.0.1:8090
+```
+
+Then open `https://ub01.char-logarithm.ts.net:8444/`. A page served over HTTPS sends `Origin: https://<that name>`,
+which the Studio accepts only for names given with `--allow-host`. Everyone who can reach that address can use the
+Studio, including starting a tune: with `--key` given, every `/api/` request needs it (the page asks for it).
 
 ## Tests
 

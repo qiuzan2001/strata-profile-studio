@@ -76,7 +76,7 @@ class Routes(Base):
                                                   "settings_short", "tune", "note"})
         _, _, rep = request(s, "GET", "/api/reports/" + support.A)
         self.assertEqual(set(rep), {"id", "path", "date", "machine", "params", "elapsed_s", "settings", "prompts",
-                                    "decode", "agent", "chat_runs", "noise", "findings", "skipped", "failures",
+                                    "decode", "agent", "chat_runs", "findings", "skipped", "failures",
                                     "note", "tune"})
         self.assertEqual(set(rep["machine"]), {"gpu", "gpu_vram_mib", "cpu", "ram_gib", "model", "quant", "context",
                                                "strata_version", "engine_version"})
@@ -93,8 +93,9 @@ class Routes(Base):
         st, _, doc = request(s, "GET", f"/api/compare?a={support.A}&b={support.B}")
         self.assertEqual(st, 200)
         self.assertEqual(set(doc), {"a", "b", "warnings", "floors", "verdicts", "rows", "settings"})
-        self.assertEqual(set(doc["floors"]), {"tps_median", "tps_single", "hit_median", "hit_single", "ms_part_abs"})
-        self.assertEqual(set(doc["verdicts"][0]), {"group", "key", "state", "text"})
+        self.assertEqual(set(doc["floors"]), {"minimum", "assumed", "pairs"})
+        self.assertEqual(set(doc["verdicts"][0]), {"group", "key", "state", "text", "floor_note"})
+        self.assertIn("assumed floor", doc["verdicts"][0]["text"])
         self.assertEqual(set(doc["rows"][0]), {"group", "key", "metric", "a", "b", "delta", "pct", "better", "floor",
                                                "floor_kind", "state"})
         self.assertEqual(set(doc["settings"][0]), {"flag", "a", "b", "changed"})
@@ -102,6 +103,17 @@ class Routes(Base):
             st, _, doc = request(s, "GET", "/api/compare?" + bad)
             self.assertEqual(st, 404, bad)
             self.assertIn("message", doc["error"])
+
+    def test_compare_takes_its_noise_floor_from_same_settings_reports_in_the_folder(self):
+        R = "2026-10-17-profile-rtx-5070-ti-swift-1-5-iq3-s"
+        support.copy_fixtures(self.results, (R, R + "-3", R + "-4"))
+        s = self.studio()
+        st, _, doc = request(s, "GET", f"/api/compare?a={R}-3&b={R}-4")
+        self.assertEqual(st, 200)
+        self.assertEqual(doc["floors"]["pairs"], [{"a": R + "-3", "b": R + "-4", "label": "runs 3 and 4, same settings"}])
+        v = doc["verdicts"][0]
+        self.assertEqual(v["floor_note"], "noise floor from runs 3 and 4, same settings")
+        self.assertNotIn("assumed floor", v["text"])
 
     def test_settings_keys_with_profile_settings_and_without(self):
         s = self.studio()
@@ -282,7 +294,7 @@ class Checks(Base):
         self.assertIn("frame-ancestors 'none'", h["content-security-policy"])
         self.assertEqual(h["x-content-type-options"], "nosniff")
         self.assertEqual(h["referrer-policy"], "no-referrer")
-        for name, ctype in (("app.js", "javascript"), ("charts.js", "javascript"), ("style.css", "text/css"),
+        for name, ctype in (("app.js", "javascript"), ("charts.js", "javascript"), ("insights.js", "javascript"), ("style.css", "text/css"),
                             ("favicon.svg", "image/svg+xml"), ("vendor/chart-4.4.1.umd.js", "javascript")):
             st, h, _ = request(s, "GET", "/static/" + name)
             self.assertEqual(st, 200, name)
@@ -292,6 +304,51 @@ class Checks(Base):
             self.assertEqual(request(s, "GET", "/static/" + name)[0], 404, name)
         self.assertEqual(request(s, "GET", "/studio.py")[0], 404)
         self.assertEqual(request(s, "GET", "/studiolib/server.py")[0], 404)
+
+
+class Proxy(Base):
+    """--allow-host: a reverse proxy (tailscale serve) in front of the loopback listener."""
+
+    def test_default_stays_strict_and_an_allowed_name_is_accepted(self):
+        s = self.studio()
+        self.assertEqual(request(s, "GET", "/api/state", headers={"Host": "ub01.example.ts.net:8444"})[0], 403)
+        import studio
+        s2 = studio.Studio(self.fake.url, str(self.results), port=0, state_path=str(self.tmp / "p.json"),
+                           timing=support.fast_timing(), allow_hosts=["ub01.example.ts.net:8444", "other.example"])
+        s2.start()
+        self.addCleanup(s2.stop)
+        for host, want in (("ub01.example.ts.net:8444", 200), ("UB01.example.ts.net:8444", 200),
+                           ("ub01.example.ts.net:9999", 403), ("ub01.example.ts.net", 403),
+                           ("other.example", 200), ("other.example:1234", 200), ("evil.example", 403),
+                           (f"127.0.0.1:{s2.port}", 200)):
+            self.assertEqual(request(s2, "GET", "/api/state", headers={"Host": host})[0], want, host)
+        # still bound to 127.0.0.1 only
+        self.assertEqual(s2.server.server_address[0], "127.0.0.1")
+        # the page's POSTs carry Origin https://<name> behind a TLS-terminating proxy
+        h = {"Host": "ub01.example.ts.net:8444"}
+        body = {"kind": "report", "id": support.A, "text": "via proxy"}
+        self.assertEqual(request(s2, "POST", "/api/notes", body, headers={**h, "Origin": "https://ub01.example.ts.net:8444"})[0], 200)
+        self.assertEqual(request(s2, "POST", "/api/notes", body, headers={**h, "Origin": "http://ub01.example.ts.net:8444"})[0], 200)
+        self.assertEqual(request(s2, "POST", "/api/notes", body, headers={**h, "Origin": "https://evil.example"})[0], 403)
+        # https is accepted only for an allowed name, not for the local ones
+        own = {"Host": f"127.0.0.1:{s2.port}", "Origin": f"https://127.0.0.1:{s2.port}"}
+        self.assertEqual(request(s2, "POST", "/api/notes", body, headers=own)[0], 403)
+
+    def test_a_key_makes_the_bearer_required_behind_a_proxy(self):
+        fake = FakeStrata(self.results, key=KEY).start()
+        self.addCleanup(fake.stop)
+        import studio
+        s = studio.Studio(fake.url, str(self.results), key=KEY, port=0, state_path=str(self.tmp / "pk.json"),
+                          timing=support.fast_timing(), allow_hosts=["ub01.example.ts.net"])
+        s.start()
+        self.addCleanup(s.stop)
+        h = {"Host": "ub01.example.ts.net"}
+        self.assertEqual(request(s, "GET", "/api/state", headers=h)[0], 401)
+        self.assertEqual(request(s, "GET", "/api/state", headers={**h, "Authorization": f"Bearer {KEY}"})[0], 200)
+
+    def test_cli_help_names_the_flag(self):
+        r = subprocess.run([sys.executable, str(ROOT / "studio.py"), "--help"], capture_output=True, text=True, timeout=20)
+        self.assertIn("--allow-host", r.stdout)
 
 
 class LiveDedupe(Base):

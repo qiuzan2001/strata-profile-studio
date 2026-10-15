@@ -43,7 +43,8 @@ class Studio:
     """Everything wired together.  `start()` runs the background threads, `serve_forever()` the HTTP server."""
 
     def __init__(self, strata: str, results: str, key: str | None = None, host: str = "127.0.0.1", port: int = 8090,
-                 config: str | None = None, state_path: str | None = None, timing: Timing | None = None):
+                 config: str | None = None, state_path: str | None = None, timing: Timing | None = None,
+                 allow_hosts=()):
         if not is_loopback(host) and not key:
             raise SystemExit("Refusing to listen on a non-loopback address without a key: add --key KEY "
                              "(or STRATA_KEY=KEY). The same key protects the Studio and is sent to Strata.")
@@ -60,11 +61,13 @@ class Studio:
                              config_path=config)
         self.flow = Flow(self.client, self.poller, self.reports, self.state, self.timing, self.results,
                          config_path=config)
-        studio_key = key if not is_loopback(host) else None
+        # the bearer is required wherever the Studio can be reached from beyond this PC: a non-loopback bind, or
+        # names let in with --allow-host (a reverse proxy) when a key was given
+        studio_key = key if (not is_loopback(host) or allow_hosts) else None
         self.app = StudioApp(strata_url=public_url(strata), results_dir=self.results, config_path=config, key=key,
                              studio_key=studio_key, host=host, port=port, client=self.client, poller=self.poller,
                              flow=self.flow, reports=self.reports, state=self.state, web_dir=ROOT / "web",
-                             started_at=time.time())
+                             started_at=time.time(), allow_hosts=allow_hosts)
         try:
             self.server = StudioServer(host, port, make_handler(self.app))
         except OSError as e:
@@ -119,6 +122,9 @@ def parse_args(argv=None):
     ap.add_argument("--port", type=int, default=8090, help="the Studio's port (default %(default)s)")
     ap.add_argument("--host", default="127.0.0.1",
                     help="the address to listen on (default %(default)s); anything else needs --key")
+    ap.add_argument("--allow-host", action="append", default=[], metavar="HOST[:PORT]",
+                    help="also answer to this Host name (repeatable), for a reverse proxy such as tailscale serve; "
+                         "the Studio still listens on --host only")
     ap.add_argument("--config", default=None,
                     help="Strata's strata-<model>.json, read only: the Settings view shows its values")
     ap.add_argument("--state", default=None, help="the state file (default studio-state.json next to studio.py)")
@@ -129,10 +135,15 @@ def parse_args(argv=None):
 def main(argv=None) -> int:
     a = parse_args(argv)
     key = a.key or os.environ.get("STRATA_KEY") or None
-    studio = Studio(a.strata, a.results, key=key, host=a.host, port=a.port, config=a.config, state_path=a.state)
+    studio = Studio(a.strata, a.results, key=key, host=a.host, port=a.port, config=a.config, state_path=a.state,
+                    allow_hosts=a.allow_host)
     shown = "[" + a.host + "]" if ":" in a.host else a.host
     print(f"Strata Profile Studio on http://{shown}:{studio.port}/ (Strata: {studio.app.strata_url}, "
           f"reports: {studio.results})", flush=True)
+    if a.allow_host:
+        print("Also answering to Host: " + ", ".join(a.allow_host) + (". Anyone who can reach those names can use the "
+              "Studio; add --key to require a key." if not key else ". The key is required on every /api/ request."),
+              flush=True)
     if studio.state.warning:
         print(f"Note: {studio.state.warning}", flush=True)
     try:
