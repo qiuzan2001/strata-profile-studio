@@ -117,6 +117,9 @@ def make_handler(app: StudioApp):
             self.send_header("Referrer-Policy", "no-referrer")
             if api:
                 self.send_header("Cache-Control", "no-store")
+            if self.command == "POST" and not getattr(self, "_body_read", False):
+                self.send_header("Connection", "close")          # the body was not read: do not parse it as a request
+                self.close_connection = True
             for k, v in (extra or {}).items():
                 self.send_header(k, v)
             self.end_headers()
@@ -172,6 +175,7 @@ def make_handler(app: StudioApp):
                 self._error(413, "The body is larger than 64 KiB.")
                 return None
             raw = self.rfile.read(n) if n else b""
+            self._body_read = True
             try:
                 doc = json.loads(raw.decode("utf-8")) if raw.strip() else {}
             except ValueError:
@@ -208,6 +212,7 @@ def make_handler(app: StudioApp):
                 pass
 
         def do_POST(self):
+            self._body_read = False
             if not self._host_ok() or not self._origin_ok():
                 return
             u = urllib.parse.urlsplit(self.path)

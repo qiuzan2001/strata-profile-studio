@@ -82,12 +82,7 @@ def parse(lines, defaults: dict | None = None) -> dict:
                 r = _float(rate)
                 if r is None:
                     continue
-                e = _entry(step["_values"], val)
-                n = int(m.group(1))
-                while len(e["rounds"]) < n - 1:      # a missed round line keeps the later rounds in their place
-                    e["rounds"].append(None)
-                if len(e["rounds"]) == n - 1:
-                    e["rounds"].append(r)
+                _entry(step["_values"], val)["rounds"].append(r)
             continue
         m = RE_MEDIAN.match(line)
         if m:
@@ -141,7 +136,7 @@ def parse(lines, defaults: dict | None = None) -> dict:
         st = steps[key]
         values = _sorted_values(st)
         for v in values:                              # a sweep's medians while the summary has not come yet
-            rs = [r for r in v["rounds"] if r is not None]
+            rs = v["rounds"]
             if v["median"] is None and rs:
                 v["median"], v["min"], v["max"] = statistics.median(rs), min(rs), max(rs)
         default = st["default"]

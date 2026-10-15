@@ -87,13 +87,14 @@ def request_doc(prompt_tokens=2023, generated=24, prompt_ms=1809.0, decode_ms=37
 class FakeStrata:
     def __init__(self, results_dir, key=None, profile=True, history=False, settings=False, tune_available=True,
                  tune_outcome="done", reload_503s=1, report_inside=True, run_secs=0.05, tune_secs=0.2,
-                 tune_busy_409s=0, host="127.0.0.1", port=0, status_changes=True):
+                 tune_busy_409s=0, host="127.0.0.1", port=0, status_changes=True, run_fail_on=()):
         self.results_dir = Path(results_dir)
         self.key, self.profile, self.history_on, self.settings_on = key, profile, history, settings
         self.tune_available, self.tune_outcome = tune_available, tune_outcome
         self.reload_503s, self.report_inside = reload_503s, report_inside
         self.run_secs, self.tune_secs, self.tune_busy_409s = run_secs, tune_secs, tune_busy_409s
         self.status_changes = status_changes
+        self.run_fail_on = set(run_fail_on)          # run numbers (1, 2, ...) that end failed
         self.lock = threading.RLock()
         self.requests: list[dict] = []
         self.loaded = True
@@ -206,7 +207,7 @@ class FakeStrata:
         self.httpd.daemon_threads = True
         self.port = self.httpd.server_address[1]
         self.url = f"http://{host}:{self.port}"
-        self._thread = threading.Thread(target=self.httpd.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
+        self._thread = threading.Thread(target=self.httpd.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True)
 
     # --------------------------------------------------------------------------------------- lifecycle
     def start(self):
@@ -245,6 +246,11 @@ class FakeStrata:
 
     def _finish_run(self, n: int):
         time.sleep(self.run_secs)
+        if n in self.run_fail_on:
+            with self.lock:
+                self.run.update(state="failed", returncode=2, lines=self.run["lines"] + ["the run failed: no answer"],
+                                elapsed_s=round(time.time() - self.run["started_at"], 1))
+            return
         fixture = RUN_FIXTURES[(n - 1) % len(RUN_FIXTURES)]
         parent = self.results_dir if self.report_inside else self.results_dir.parent / "elsewhere"
         parent.mkdir(parents=True, exist_ok=True)

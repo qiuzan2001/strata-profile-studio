@@ -80,7 +80,7 @@ class Studio:
         self.poller.start()
         self.flow.resume()
         threading.Thread(target=self._flush_loop, name="state-flush", daemon=True).start()
-        threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.2}, name="http",
+        threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.05}, name="http",
                          daemon=True).start()
 
     def _flush_loop(self):
@@ -92,7 +92,7 @@ class Studio:
         self.flow.resume()
         threading.Thread(target=self._flush_loop, name="state-flush", daemon=True).start()
         try:
-            self.server.serve_forever(poll_interval=0.2)
+            self.server.serve_forever(poll_interval=0.05)
         finally:
             self.stop()
 
