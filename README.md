@@ -19,8 +19,8 @@ library.
 | ![Request](docs/screenshots/request.png) | ![Settings](docs/screenshots/settings.png) | ![Dark](docs/screenshots/now-dark.png) |
 
 The screenshots show the real data of one PC (RTX 5070 Ti, Ryzen 7 5800X3D, Swift 1.5 IQ3_S) on 2026-10-15.
-`docs/screenshots/` has each view in light, dark and at 390 px. It also has each state, for example "Strata does not
-answer", "profiling off" and "a tune started on the page of Strata".
+`docs/screenshots/` has each view in the light theme. It has Now, Compare and Tune also in the dark theme and at
+390 px. It also has each state, for example "Strata does not answer" and "profiling off".
 
 ## Glossary
 
