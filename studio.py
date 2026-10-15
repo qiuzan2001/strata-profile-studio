@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from studiolib import __version__                                          # noqa: E402
+from studiolib.enginelog import EngineLog                                  # noqa: E402
 from studiolib.flow import Flow                                            # noqa: E402
 from studiolib.poller import Poller                                        # noqa: E402
 from studiolib.reports import ReportStore                                  # noqa: E402
@@ -39,12 +40,25 @@ def public_url(url: str) -> str:
     return f"{u.scheme}://{host}{':' + str(u.port) if u.port else ''}{u.path.rstrip('/')}"
 
 
+def default_engine_log(config: str | None) -> str | None:
+    """The engine log Strata writes: the config's "log" key, else strata-<model>.log next to the config."""
+    if not config:
+        return None
+    from studiolib.settings import read_config
+    cfg, _ = read_config(config)
+    p = Path(config)
+    if cfg and isinstance(cfg.get("log"), str) and cfg["log"]:
+        log = Path(os.path.expanduser(cfg["log"]))
+        return str(log if log.is_absolute() else p.parent / log)
+    return str(p.with_suffix(".log"))
+
+
 class Studio:
     """Everything wired together.  `start()` runs the background threads, `serve_forever()` the HTTP server."""
 
     def __init__(self, strata: str, results: str, key: str | None = None, host: str = "127.0.0.1", port: int = 8090,
                  config: str | None = None, state_path: str | None = None, timing: Timing | None = None,
-                 allow_hosts=()):
+                 allow_hosts=(), engine_log: str | None = None, read_only: bool = False):
         if not is_loopback(host) and not key:
             raise SystemExit("Refusing to listen on a non-loopback address without a key: add --key KEY "
                              "(or STRATA_KEY=KEY). The same key protects the Studio and is sent to Strata.")
@@ -67,7 +81,8 @@ class Studio:
         self.app = StudioApp(strata_url=public_url(strata), results_dir=self.results, config_path=config, key=key,
                              studio_key=studio_key, host=host, port=port, client=self.client, poller=self.poller,
                              flow=self.flow, reports=self.reports, state=self.state, web_dir=ROOT / "web",
-                             started_at=time.time(), allow_hosts=allow_hosts)
+                             started_at=time.time(), allow_hosts=allow_hosts,
+                             engine_log=EngineLog(engine_log or default_engine_log(config)), read_only=read_only)
         try:
             self.server = StudioServer(host, port, make_handler(self.app))
         except OSError as e:
@@ -127,6 +142,11 @@ def parse_args(argv=None):
                          "the Studio still listens on --host only")
     ap.add_argument("--config", default=None,
                     help="Strata's strata-<model>.json, read only: the Settings view shows its values")
+    ap.add_argument("--read-only", action="store_true",
+                    help="look only: no profile run, no tune, no config write (every POST answers 403)")
+    ap.add_argument("--engine-log", default=None,
+                    help="Strata's engine log, read only (default: the config's \"log\" key, or strata-<model>.log "
+                         "next to it): the PC diagram's PCIe link ceiling")
     ap.add_argument("--state", default=None, help="the state file (default studio-state.json next to studio.py)")
     ap.add_argument("--version", action="version", version=f"Strata Profile Studio {__version__}")
     return ap.parse_args(argv)
@@ -136,7 +156,7 @@ def main(argv=None) -> int:
     a = parse_args(argv)
     key = a.key or os.environ.get("STRATA_KEY") or None
     studio = Studio(a.strata, a.results, key=key, host=a.host, port=a.port, config=a.config, state_path=a.state,
-                    allow_hosts=a.allow_host)
+                    allow_hosts=a.allow_host, engine_log=a.engine_log, read_only=a.read_only)
     shown = "[" + a.host + "]" if ":" in a.host else a.host
     print(f"Strata Profile Studio on http://{shown}:{studio.port}/ (Strata: {studio.app.strata_url}, "
           f"reports: {studio.results})", flush=True)

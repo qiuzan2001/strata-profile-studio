@@ -176,7 +176,7 @@ def _row(group, key, metric, a, b, direction, fl: dict, kind: str, tinted=True):
     if a is None or b is None:
         return {"group": group, "key": key, "metric": metric, "a": _round(None if a is None else a * scale),
                 "b": _round(None if b is None else b * scale), "delta": None, "pct": None, "better": direction,
-                "floor": _round(floor_shown), "floor_kind": kind, "state": "missing"}
+                "floor": _round(floor_shown), "floor_kind": kind, "floor_assumed": fl["assumed"], "state": "missing"}
     d = (b - a) * scale
     pct = (b - a) / a * 100 if a else None
     state = "same"
@@ -184,7 +184,7 @@ def _row(group, key, metric, a, b, direction, fl: dict, kind: str, tinted=True):
         state = _state(b - a, pct, fl["value"], direction, kind)
     return {"group": group, "key": key, "metric": metric, "a": _round(a * scale), "b": _round(b * scale),
             "delta": _round(d), "pct": _round(pct, 2), "better": direction, "floor": _round(floor_shown),
-            "floor_kind": kind, "state": state}
+            "floor_kind": kind, "floor_assumed": fl["assumed"], "state": state}
 
 
 def _note(fl: dict) -> str | None:
@@ -251,6 +251,17 @@ def _verdict_prompt(label, pa, pb, fl):
     if fl["assumed"]:
         text += f" ({ASSUMED_NOTE})"
     return {"group": "prompt", "key": label, "state": state, "text": text, "floor_note": _note(fl)}
+
+
+def sign_test(ups: int, downs: int) -> float | None:
+    """The exact two-sided sign test: how likely a split at least this lopsided is when each turn is a coin toss
+    (ties left out).  None without a turn that moved."""
+    n = ups + downs
+    if n == 0:
+        return None
+    k = min(ups, downs)
+    tail = sum(math.comb(n, i) for i in range(k + 1)) / 2 ** n
+    return min(1.0, 2 * tail)
 
 
 def _ordered_keys(a_items, b_items, key):
@@ -353,5 +364,7 @@ def compute(a: dict, b: dict, pool: list[dict] | None = None) -> dict:
             verdicts.append({"group": "agent", "key": "turns", "state": "same", "text": sentence, "floor_note": None})
     floors = {"minimum": MIN_REL, "assumed": {"tps": ASSUMED_TPS, "ms_part": ASSUMED_MS, "hit_points": ASSUMED_HIT},
               "pairs": noise.pairs}
+    sign = {"turns": both, "faster": ups, "slower": downs, "p": _round(sign_test(ups, downs), 5),
+            "min_turns": SIGN_MIN_TURNS}
     return {"a": a.get("id"), "b": b.get("id"), "warnings": warnings_for(a, b), "floors": floors,
-            "verdicts": verdicts, "rows": rows, "settings": settings_diff(a, b)}
+            "verdicts": verdicts, "rows": rows, "settings": settings_diff(a, b), "sign": sign}

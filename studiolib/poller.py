@@ -11,7 +11,8 @@ import threading
 import time
 from pathlib import Path
 
-from . import settings as settings_mod
+from . import requests as requests_mod, settings as settings_mod
+from .requests import REQUEST_KEYS, kind_of
 from .strata import StrataError
 
 LIVE_MAX = 300
@@ -25,9 +26,8 @@ MSG_PROFILE_OFF = ("Profiling is off in Strata: add \"profile\": true to strata-
 MSG_MISMATCH = ("Strata wrote its report to {parent}, but the Studio reads {dir}: restart the Studio with "
                 "--results {parent}.")
 
-SAMPLE_KEYS = ("prompt_tokens", "reused", "read", "prompt_tok_s", "prompt_ms", "prompt_gpu_ms", "prompt_groups_ms",
-               "generated", "decode_tok_s", "decode_ms", "ms_per_window", "tokens_per_window", "window_ms",
-               "cpu_experts", "hit_rate", "pcie_share", "kv_hit", "drafts_offered", "drafts_accepted")
+SAMPLE_KEYS = REQUEST_KEYS
+HARDWARE_HISTORY = 60
 
 
 def _d(x):
@@ -40,42 +40,9 @@ def _stamp(prompt_tokens, reused, generated, prompt_ms, decode_ms):
     return (prompt_tokens, reused, generated, r(prompt_ms), r(decode_ms))
 
 
-def sample_from_last(req: dict) -> dict:
-    """/profile/last `request` -> sample fields (a missing part gives None)."""
-    s, p, dc = _d(req.get("summary")), _d(req.get("prompt")), _d(req.get("decode"))
-    pg, dg = _d(p.get("groups")), _d(dc.get("groups"))
-    hit, kv = _d(req.get("hit")), _d(req.get("kv"))
-    return {"prompt_tokens": s.get("prompt_tokens"), "reused": s.get("reused"), "read": s.get("read"),
-            "prompt_tok_s": s.get("prompt_tok_s"), "prompt_ms": s.get("prompt_ms"),
-            "prompt_gpu_ms": pg.get("gpu_ms"), "prompt_groups_ms": pg.get("ms") or None,
-            "generated": s.get("generated"), "decode_tok_s": s.get("decode_tok_s"), "decode_ms": s.get("decode_ms"),
-            "ms_per_window": dg.get("ms_per_window"), "tokens_per_window": dg.get("tokens_per_window"),
-            "window_ms": dg.get("ms") or None, "cpu_experts": dg.get("cpu_experts"),
-            "hit_rate": hit.get("hit_rate"), "pcie_share": hit.get("pcie_share"), "kv_hit": kv.get("kv_hit"),
-            "drafts_offered": s.get("drafts_offered"), "drafts_accepted": s.get("drafts_accepted")}
-
-
-def sample_from_history(e: dict) -> dict:
-    return {"prompt_tokens": e.get("prompt_tokens"), "reused": e.get("reused"), "read": e.get("read"),
-            "prompt_tok_s": e.get("prompt_tok_s"), "prompt_ms": e.get("prompt_ms"),
-            "prompt_gpu_ms": e.get("prompt_gpu_ms"), "prompt_groups_ms": None,
-            "generated": e.get("generated"), "decode_tok_s": e.get("decode_tok_s"), "decode_ms": e.get("decode_ms"),
-            "ms_per_window": e.get("ms_per_window"), "tokens_per_window": e.get("tokens_per_window"),
-            "window_ms": e.get("ms") if isinstance(e.get("ms"), dict) else None, "cpu_experts": e.get("cpu_experts"),
-            "hit_rate": e.get("hit_rate"), "pcie_share": e.get("pcie_share"), "kv_hit": e.get("kv_hit"),
-            "drafts_offered": e.get("drafts_offered"), "drafts_accepted": e.get("drafts_accepted")}
-
-
-def sample_from_metrics(r: dict) -> dict:
-    read, pms = r.get("prompt_read"), r.get("prompt_ms")
-    tok_s = round(read / pms * 1000, 1) if isinstance(read, (int, float)) and isinstance(pms, (int, float)) and pms else None
-    generated = r.get("engine_generated") if r.get("engine_generated") is not None else r.get("output_tokens")
-    out = {k: None for k in SAMPLE_KEYS}
-    out.update(prompt_tokens=r.get("prompt_tokens"), reused=r.get("reused"), read=read, prompt_tok_s=tok_s,
-               prompt_ms=pms, generated=generated, decode_tok_s=r.get("decode_tok_s"), decode_ms=r.get("decode_ms"),
-               hit_rate=r.get("hit_rate"), pcie_share=r.get("pcie_share"),
-               drafts_offered=r.get("drafts_offered"), drafts_accepted=r.get("drafts_accepted"))
-    return out
+sample_from_last = requests_mod.from_last
+sample_from_history = requests_mod.from_history
+sample_from_metrics = requests_mod.from_metrics
 
 
 class Poller:
@@ -99,6 +66,8 @@ class Poller:
         self.status_at = None
         self.engine: dict | None = None
         self.engine_at = None
+        self.hardware: dict = {}                     # /metrics: hardware (now), hardware_static, history, live
+        self.hardware_at = None
         self.mismatch: str | None = None
         self._need_probe = True
         # live ring
@@ -108,6 +77,7 @@ class Poller:
         self._after_load = False
         self._loaded_prev: bool | None = None
         self._seen_metrics: dict = {}
+        self._last_seen = False
         self.tag: str | None = None                  # set by the flow
         # observations
         self.estimates = {"profile_s": None, "tune_s": None}
@@ -165,6 +135,7 @@ class Poller:
             if self._is_due("status", self.timing.status_busy if self._busy() else self.timing.status_idle, now):
                 self.refresh_status()
         every = self.timing.metrics_off if not self.profile else self.timing.metrics_on
+        every = min(every, self.timing.hardware)
         if self._is_due("metrics", every, now):
             self._fetch_metrics()
 
@@ -336,7 +307,7 @@ class Poller:
     def _append(self, fields: dict, stamp, source: str, seen_at: float, open_: bool, tag=None, insert_sorted=False):
         self._seq += 1
         s = {"seq": self._seq, "seen_at": seen_at, "source": source, "tag": tag, "open": open_,
-             "after_load": False}
+             "after_load": False, "late": False}
         for k in SAMPLE_KEYS:
             s[k] = fields.get(k)
         s["_stamp"], s["_updated"] = stamp, self.clock()
@@ -393,6 +364,9 @@ class Poller:
                     existing["_updated"] = now
                 return
             s = self._append(fields, stamp, "last", now, fields["hit_rate"] is None, tag=self._tag())
+            if not self._last_seen:                  # the first answer is a request from before the Studio started
+                s["late"] = True
+            self._last_seen = True
             if self._after_load:
                 s["after_load"], self._after_load = True, False
 
@@ -432,6 +406,7 @@ class Poller:
         with self.lock:
             if isinstance(r.data.get("engine"), dict):
                 self.engine, self.engine_at = r.data["engine"], self.clock()
+            self._note_hardware(r.data)
             if self.profile:
                 return                                   # profile on: Live comes from /profile/last
             reqs = [x for x in r.data.get("requests") or [] if isinstance(x, dict)]
@@ -449,6 +424,30 @@ class Poller:
                 if self._after_load:
                     s["after_load"], self._after_load = True, False
 
+    def _note_hardware(self, data: dict):
+        hist = {}
+        for k, v in _d(data.get("history")).items():
+            if isinstance(v, list):
+                hist[str(k)] = [x if isinstance(x, (int, float)) and not isinstance(x, bool) else None
+                                for x in v[-HARDWARE_HISTORY:]]
+        self.hardware = {"now": _d(data.get("hardware")), "static": _d(data.get("hardware_static")), "history": hist,
+                         "live": _d(data.get("live")), "time": data.get("time")}
+        self.hardware_at = self.clock()
+
+    def hardware_doc(self) -> dict:
+        with self.lock:
+            hw = copy.deepcopy(self.hardware)
+            eng = copy.deepcopy(_d(self.engine))
+            at = self.hardware_at
+        live = _d(hw.get("live"))
+        return {"at": at, "now": hw.get("now") or {}, "static": hw.get("static") or {},
+                "history": hw.get("history") or {},
+                "live": {k: live.get(k) for k in ("state", "tok_s", "tok_s_mean", "prompt_read", "prompt_total")
+                         if k in live},
+                "engine": {k: eng.get(k) for k in ("expert_slots", "expert_cache_mib", "arena_mib", "vram_free_mib",
+                                                   "kv_resident", "pool_workers", "pcie_frac", "context", "kv",
+                                                   "spec", "mtp_max")}}
+
     # ------------------------------------------------------------------------------------ read side
     def live(self, since: int = 0) -> dict:
         now = self.clock()
@@ -456,7 +455,9 @@ class Poller:
             out = []
             for s in self.ring:
                 if s["seq"] > since or s["open"] or now - s["_updated"] <= FRESH_UPDATE_S:
-                    out.append({k: v for k, v in s.items() if not k.startswith("_")})
+                    x = {k: v for k, v in s.items() if not k.startswith("_")}
+                    x["kind"] = kind_of(x["prompt_tokens"], x["reused"], x["generated"])
+                    out.append(x)
             return {"max": LIVE_MAX, "last_seq": self._seq if self.ring else 0, "samples": copy.deepcopy(out)}
 
     def first_sample_with_tag(self, tag: str, after_seq: int = 0) -> dict | None:

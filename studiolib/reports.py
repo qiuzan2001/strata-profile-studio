@@ -11,6 +11,8 @@ import re
 import threading
 from pathlib import Path
 
+from .requests import report_requests
+
 REPORT_ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-profile-[a-z0-9.-]+$")
 MAX_REPORTS = 500
 MAX_RESULTS_BYTES = 16 * 1024 * 1024
@@ -186,14 +188,44 @@ def normalise(raw, report_id: str, path: str, meta: dict | None = None) -> dict:
                         "model": _str(machine.get("model")), "quant": _str(machine.get("quant")),
                         "context": _num(machine.get("context")), "strata_version": _str(machine.get("strata_version")),
                         "engine_version": _str(machine.get("engine_version"))},
+            "environment": environment(machine),
             "params": {"long": _num(params.get("long")), "verify_profile": params.get("verify_profile")},
             "elapsed_s": _num(raw.get("elapsed_s")),
             "settings": {"source": source, "rows": rows},
             "prompts": prompts, "decode": decode, "agent": agent, "chat_runs": runs,
+            "requests": report_requests(results),
             "findings": [str(f) for f in _list(results.get("findings"))],
             "skipped": _dict(results.get("skipped")),
             "failures": [f if isinstance(f, (str, dict)) else str(f) for f in _list(results.get("failures"))],
             "note": "", "tune": None}
+
+
+ENV_KEYS = (("gpu_driver", "machine"), ("cuda", "machine"), ("cpu_cores", "machine"), ("cpu_threads", "machine"),
+            ("os", "machine"), ("python", "machine"), ("strata_commit", "machine"), ("parallel_slots", "machine"),
+            ("launch", "machine"), ("kv", "engine_info"), ("kv_resident", "engine_info"),
+            ("expert_slots", "engine_info"), ("expert_cache_mib", "engine_info"), ("spec", "engine_info"),
+            ("mtp_max", "engine_info"), ("vram_free_mib", "engine_info"), ("arena_mib", "engine_info"),
+            ("pool_workers", "engine_info"))
+
+
+def environment(machine: dict) -> dict:
+    """The rest of the machine block: driver, CUDA, cores, OS, commit, launch line and the engine's sizes."""
+    info = _dict(machine.get("engine_info"))
+    out = {}
+    for key, where in ENV_KEYS:
+        v = (machine if where == "machine" else info).get(key)
+        out[key] = v if isinstance(v, (int, float, str)) and not isinstance(v, bool) else None
+    return out
+
+
+def headline(rep: dict) -> dict:
+    """The few numbers a run is ranked by: decode tok/s and hit rate per workload, prompt tok/s per read, decode
+    tok/s per agent turn."""
+    return {"decode": {d["kind"]: d["tps"]["median"] for d in rep["decode"]},
+            "hit": {d["kind"]: d["hit_rate"] for d in rep["decode"]},
+            "window": {d["kind"]: d["ms_per_window"] for d in rep["decode"]},
+            "prompt": {p["label"]: p["prompt_tps"] for p in rep["prompts"]},
+            "agent": [t["decode_tps"] for t in rep["agent"]]}
 
 
 def list_entry(rep: dict, order: list, short: dict, ctx) -> dict:
@@ -203,6 +235,7 @@ def list_entry(rep: dict, order: list, short: dict, ctx) -> dict:
     return {"id": rep["id"], "date": rep["date"], "order": order, "gpu": m["gpu"], "model": m["model"],
             "quant": m["quant"], "context": m["context"], "strata_version": m["strata_version"],
             "elapsed_s": rep["elapsed_s"], "chat_tps": chat["tps"]["median"] if chat else None, "ok": True,
+            "headline": headline(rep), "mtime": order[4] if len(order) > 4 else None,
             "error": None, "settings_short": short,
             "tune": ctx.tune_role(rep["id"]) if ctx else None, "note": ctx.note(rep["id"]) if ctx else ""}
 
@@ -323,7 +356,8 @@ class ReportStore:
             if rep is None:
                 out["reports"].append({"id": name, "date": name[:10], "order": order, "gpu": None, "model": None,
                                        "quant": None, "context": None, "strata_version": None, "elapsed_s": None,
-                                       "chat_tps": None, "ok": False, "error": UNREADABLE,
+                                       "chat_tps": None, "ok": False, "error": UNREADABLE, "headline": None,
+                                       "mtime": order[4],
                                        "settings_short": {"pcie_frac": None, "spec_min_p": None, "pool_workers": None,
                                                           "adapt": None},
                                        "tune": self.ctx.tune_role(name), "note": self.ctx.note(name)})

@@ -15,6 +15,7 @@ class Timing:
     metrics_off: float = 5.0
     metrics_on: float = 30.0
     probe: float = 60.0
+    hardware: float = 1.0                   # /metrics for the PC diagram
     settings_cache: float = 10.0
     scan: float = 10.0
     tick: float = 0.1

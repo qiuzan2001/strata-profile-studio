@@ -1,277 +1,298 @@
-"""Checks the page against redesign section 8 with headless Chromium (Playwright) and tests/fakestrata.py.
+"""The page check: every view and every state of the Studio in headless Chromium, against tests/demo_strata.py.
 
-Not a unit test (it needs Playwright and a Chromium build); run it by hand:
+Not a unit test (it needs Playwright and Chromium); run it by hand with a Python that has Playwright:
 
-    python3 tests/page_check.py --python-with-playwright ...      # or simply: <venv>/bin/python tests/page_check.py
+    <venv>/bin/python tests/page_check.py [--out DIR] [--seed RESULTS] [--live live.json] [--hardware hw.json]
+                                          [--settings settings.json] [--tunes state.json] [--quick]
 
-It starts a fake Strata and a Studio on ports above 8190, runs a full tune flow through the Studio's API, then
-measures every view at 1400x900 and 390x844 in light and dark, saves screenshots to docs/screenshots/ and prints one
-PASS/FAIL line per checklist item.  No GPU, no engine, no port 8080.
+With no arguments it uses the fixture reports (tests/fixtures/reports) and synthetic readings.  --seed and the
+recorded files make the screenshots show real data (copies; the originals are only read).  For each state it starts
+a demo Strata and a Studio on ports above 8190, takes screenshots at 1400x900 light and dark and at 390x844, and
+prints one PASS/FAIL line per check: no script error, no horizontal scroll at 390 px, the PC diagram adds no node
+in a minute of updates, the tune flow runs from the button to the comparison, a profile run starts from the button,
+"use the settings of run X" writes the config copy and its .bak.  Never touches port 8080 or a real Strata file.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tests"))
-
-from fakestrata import FakeStrata, request_doc    # noqa: E402
-from playwright.sync_api import sync_playwright  # noqa: E402
-
-FAKE_PORT, STUDIO_PORT = 8195, 8196
-SHOTS = ROOT / "docs" / "screenshots"
+TESTS = ROOT / "tests"
+FIXTURES = TESTS / "fixtures" / "reports"
 RESULTS = []
+SIZES = {"light": ({"width": 1400, "height": 900}, "light"), "dark": ({"width": 1400, "height": 900}, "dark"),
+         "phone": ({"width": 390, "height": 844}, "light")}
+CONFIG = {"exe": "strata", "args": ["--pack", "demo", "--expert-cache", "auto", "--spec", "4", "--max-context", "262144",
+                                   "--kv", "int8", "--kv-resident", "32768", "--spec-min-p", "0.5", "--adapt-every", "1",
+                                   "--adapt-swaps", "80", "--adapt-decay", "0.97"],
+          "model_name": "swift-1.5-iq3_s", "port": 8080, "env": {"STRATA_PREFILL_CPU_SHARE_MAX": "3072"}, "profile": True}
 
 
-def record(name: str, ok: bool, detail: str = ""):
+def record(name, ok, detail=""):
     RESULTS.append((name, ok, detail))
     print(("PASS " if ok else "FAIL ") + name + (f"  [{detail}]" if detail else ""), flush=True)
 
 
-def get(path):
-    return json.load(urllib.request.urlopen(f"http://127.0.0.1:{STUDIO_PORT}{path}"))
+def free_port(start):
+    p = start
+    while True:
+        with socket.socket() as s:
+            if s.connect_ex(("127.0.0.1", p)) != 0:
+                return p
+        p += 1
 
 
-def post(path, body):
-    req = urllib.request.Request(f"http://127.0.0.1:{STUDIO_PORT}{path}", data=json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json"}, method="POST")
-    return json.load(urllib.request.urlopen(req))
+def wait_http(url, timeout=20):
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            urllib.request.urlopen(url, timeout=2).read()
+            return True
+        except Exception:                                   # noqa: BLE001
+            time.sleep(0.2)
+    return False
 
 
-JS_VISIBLE_STATS = """
-() => {
-  const visible = (n) => { const r = n.getBoundingClientRect(); const cs = getComputedStyle(n);
-    return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none'; };
-  const main = document.querySelector('main');
-  const tables = [...document.querySelectorAll('main table')].filter(visible).length;
-  const details = [...document.querySelectorAll('main details')].filter(visible).length;
-  const longP = [...document.querySelectorAll('main p')].filter(visible)
-    .filter((p) => p.textContent.trim().split(/\\s+/).length > 12).length;
-  const p8 = [...document.querySelectorAll('main p')].filter(visible)
-    .filter((p) => p.textContent.trim().split(/\\s+/).length > 8).length;
-  let longText = [];
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-  let n;
-  while ((n = walker.nextNode())) {
-    const t = n.textContent.trim();
-    if (!t || !n.parentElement) continue;
-    if (n.parentElement.closest('script,style,dialog:not([open]),[hidden],noscript')) continue;
-    if (!visible(n.parentElement)) continue;
-    if (t.split(/\\s+/).length > 8) longText.push(t.slice(0, 60));
-  }
-  let maxFont = 0, maxEl = '';
-  for (const e of document.querySelectorAll('body *')) {
-    if (!visible(e) || !e.childNodes.length) continue;
-    const hasText = [...e.childNodes].some((c) => c.nodeType === 3 && c.textContent.trim());
-    if (!hasText) continue;
-    const f = parseFloat(getComputedStyle(e).fontSize);
-    if (f > maxFont) { maxFont = f; maxEl = (e.className || e.tagName) + ':' + e.textContent.trim().slice(0, 20); }
-  }
-  const hero = document.querySelector('.hero-value, .headline-value');
-  const heroFont = hero ? parseFloat(getComputedStyle(hero).fontSize) : 0;
-  const keyRows = [...document.querySelectorAll('.keyrow')].filter(visible).length;
-  const bottom = Math.max(...[...document.querySelectorAll('main > section:not([hidden]) *')].filter(visible)
-    .map((e) => e.getBoundingClientRect().bottom), 0);
-  const body = document.body.innerText + ' ' + [...document.querySelectorAll('[aria-label],[data-segments]')]
-    .map((e) => (e.getAttribute('aria-label') || '') + ' ' + (e.dataset.segments || '')).join(' ');
-  return { tables, details, longP, p8, longText, maxFont, maxEl, heroFont, keyRows, bottom,
-           scrollW: document.documentElement.scrollWidth, scrollH: document.documentElement.scrollHeight,
-           hasGPU: /\\bGPU\\b/.test(body) };
-}
-"""
+def get(url):
+    return json.load(urllib.request.urlopen(url, timeout=10))
 
-JS_DECODE = """
-() => {
-  const c = document.querySelector('canvas.bar-decode');
-  const chart = Chart.getChart(c);
-  const rect = c.getBoundingClientRect();
-  const metas = chart.data.datasets.map((d, i) => chart.getDatasetMeta(i).data[0]);
-  const widths = metas.map((m) => Math.abs(m.x - m.base));
-  const area = chart.chartArea;
-  return { canvasW: rect.width, areaW: area.right - area.left, segments: c.dataset.segments, dominant: c.dataset.dominant,
-           opacity: c.dataset.opacity, widths, names: chart.data.datasets.map((d) => d.label) };
-}
-"""
+
+class Scenario:
+    """A demo Strata (unless `unreachable`) and a Studio, in their own temp folder."""
+
+    def __init__(self, a, name, state="ok", reports=True, unreachable=False, read_only=False):
+        self.name = name
+        self.dir = Path(tempfile.mkdtemp(prefix=f"pagecheck-{name}-"))
+        self.results = self.dir / "results"
+        self.results.mkdir()
+        self.procs = []
+        seed = a.seed or str(FIXTURES)
+        if reports:
+            for p in sorted(Path(seed).iterdir()):
+                if "-profile-" in p.name and (p / "results.json").is_file():
+                    shutil.copytree(p, self.results / p.name)
+        self.config = self.dir / "strata-demo.json"
+        if a.config:
+            shutil.copy(a.config, self.config)
+        else:
+            self.config.write_text(json.dumps(CONFIG, indent=2) + "\n")
+        self.state_file = self.dir / "studio-state.json"
+        if a.tunes and reports:
+            shutil.copy(a.tunes, self.state_file)
+        self.fake_port = free_port(8195)
+        if not unreachable:
+            cmd = [sys.executable, str(TESTS / "demo_strata.py"), "--port", str(self.fake_port), "--results",
+                   str(self.results), "--state", state, "--tune-secs", str(a.tune_secs), "--run-secs", "5"]
+            for flag, val in (("--live", a.live), ("--hardware", a.hardware), ("--settings", a.settings)):
+                if val:
+                    cmd += [flag, val]
+            self.procs.append(subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+            wait_http(f"http://127.0.0.1:{self.fake_port}/health")
+        self.port = free_port(self.fake_port + 1)
+        cmd = [sys.executable, str(ROOT / "studio.py"), "--port", str(self.port), "--strata",
+               f"http://127.0.0.1:{self.fake_port if not unreachable else free_port(8290)}", "--results", str(self.results),
+               "--config", str(self.config), "--state", str(self.state_file), "--engine-log", a.engine_log or str(self.dir / "none.log")]
+        if read_only:
+            cmd.append("--read-only")
+        self.procs.append(subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+        wait_http(f"http://127.0.0.1:{self.port}/api/state")
+        self.base = f"http://127.0.0.1:{self.port}"
+        time.sleep(2.5)                                       # the poller's first rounds
+
+    def close(self):
+        for p in self.procs:
+            p.terminate()
+        for p in self.procs:
+            try:
+                p.wait(5)
+            except subprocess.TimeoutExpired:
+                p.kill()
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+
+def shoot(browser, sc, out, routes, sizes, prefix=None, settle=2.5, errors=None):
+    for size in sizes:
+        vp, scheme = SIZES[size]
+        ctx = browser.new_context(viewport=vp, color_scheme=scheme)
+        page = ctx.new_page()
+        errs = []
+        page.on("pageerror", lambda e: errs.append(str(e)))
+        page.on("console", lambda m: errs.append(m.text) if m.type == "error" else None)
+        for name, route in routes:
+            page.goto(f"{sc.base}/#{route}")
+            time.sleep(settle)
+            file = out / f"{prefix or sc.name}-{name}-{size}.png"
+            page.screenshot(path=str(file), full_page=True)
+            if size == "phone":
+                w = page.evaluate("document.documentElement.scrollWidth")
+                record(f"{sc.name} {name}: no horizontal scroll at 390 px", w <= 390, f"{w} px")
+        record(f"{sc.name} {size}: no script error", not errs, "; ".join(errs[:3]))
+        if errors is not None:
+            errors += errs
+        ctx.close()
 
 
 def main():
-    SHOTS.mkdir(parents=True, exist_ok=True)
-    tmp = Path(tempfile.mkdtemp(prefix="page-check-"))
-    results = tmp / "results"
-    results.mkdir()
-    fx = ROOT / "tests" / "fixtures" / "reports"
-    for n in ("", "-2", "-3", "-4", "-5", "-6"):
-        name = "2026-10-17-profile-rtx-5070-ti-swift-1-5-iq3-s" + n
-        shutil.copytree(fx / name, results / name)
-    fake = FakeStrata(results, settings=True, history=True, tune_outcome="real", tune_secs=6, port=FAKE_PORT, reload_503s=1).start()
-    for r in fake.settings_doc["settings"]:
-        r["loaded_now"] = {"pcie_frac": "0.35", "spec_min_p": "0.70"}.get(r["id"], r["loaded_now"])
-        if r["id"] == "pcie_frac":
-            r["next_load"] = "0.55"
-    stop = threading.Event()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", default=str(ROOT / "docs" / "screenshots"))
+    ap.add_argument("--seed"); ap.add_argument("--live"); ap.add_argument("--hardware"); ap.add_argument("--settings")
+    ap.add_argument("--tunes", help="a studio-state.json with tune records to start from")
+    ap.add_argument("--config", help="a run config to copy (default: a small demo one)")
+    ap.add_argument("--engine-log", help="an engine log to read the PCIe probe from (read only)")
+    ap.add_argument("--tune-secs", type=float, default=30.0)
+    ap.add_argument("--quick", action="store_true", help="the main views only, light desktop")
+    ap.add_argument("--only", default="main,flow,states", help="which parts: main, flow, states")
+    a = ap.parse_args()
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        all_sizes = ["light"] if a.quick else ["light", "dark", "phone"]
 
-    def traffic():
-        n = 0
-        while not stop.is_set():
-            n += 1
-            with fake.lock:
-                fake.last = request_doc(prompt_tokens=300 + 400 * (n % 7), generated=24 + (n % 5) * 20,
-                                        decode_ms=380.0 + 25 * (n % 5), hit=0.62 + 0.03 * (n % 7), adapt=1.0 + 0.5 * (n % 3))
-            stop.wait(0.6)
-    threading.Thread(target=traffic, daemon=True).start()
-    studio = subprocess.Popen([sys.executable, str(ROOT / "studio.py"), "--strata", fake.url, "--results", str(results),
-                               "--port", str(STUDIO_PORT), "--state", str(tmp / "state.json")],
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    try:
-        for _ in range(100):
+        # ---- the main scenario: every view
+        parts = set(a.only.split(","))
+        sc = Scenario(a, "main", state="decoding") if "main" in parts else None
+        try:
+            if sc is None:
+                raise StopIteration
+            reports = [r for r in get(f"{sc.base}/api/reports")["reports"] if r["ok"]]
+            tunes = get(f"{sc.base}/api/tunes")["tunes"]
+            newest = reports[0]["id"]
+            pair = (tunes[0]["before_report"], tunes[0]["after_report"]) if tunes and tunes[0].get("after_report") else (reports[1]["id"], reports[0]["id"])
+            live = get(f"{sc.base}/api/live?since=0")["samples"]
+            seq = live[-1]["seq"] if live else 1
+            req = "agent-1" if any(q["id"] == "agent-1" for q in get(f"{sc.base}/api/reports/{pair[1]}")["requests"]) else "chat-1"
+            routes = [("now", "now"), ("request-live", f"now/r/{seq}"), ("runs", "runs"), ("run", f"runs/{pair[1]}"),
+                      ("request-report", f"runs/{pair[1]}/r/{req}"), ("compare", f"compare/{pair[0]}/{pair[1]}"),
+                      ("tune", "tune"), ("settings", "settings")]
+            shoot(browser, sc, out, routes, all_sizes)
+            # the diagram updates in place: no node is added in a minute of 1 s updates
+            page = browser.new_page(viewport={"width": 1400, "height": 900})
+            page.goto(f"{sc.base}/#now")
+            time.sleep(4)
+            n0 = page.evaluate("document.querySelectorAll('*').length")
+            seen = set()
+            for _ in range(10 if a.quick else 30):
+                seen.add(page.evaluate("document.querySelector('.blk-cpu .blk-big').textContent"))
+                time.sleep(2)
+            n1 = page.evaluate("document.querySelectorAll('*').length")
+            t0, t1 = min(seen), max(seen)
+            record("diagram: updates in place (node count stable over the wait)", n1 <= n0 + 2, f"{n0} -> {n1}")
+            record("diagram: the readings move", len(seen) > 1, f"CPU readings seen: {sorted(seen)}")
+            limit = page.evaluate("[...document.querySelectorAll('.blk.limit')].map(n => n.dataset.block).join(',')")
+            record("diagram: a bottleneck block is highlighted", bool(limit), limit)
+            # settings: write the config copy with the settings of the tune's before run (or the oldest run)
+            before_cfg = sc.config.read_text()
+            target = next((r["id"] for r in reports if any(x["changed"] for x in get(
+                f"{sc.base}/api/settings/apply-preview?report={r['id']}")["rows"])), pair[0])
+            page.goto(f"{sc.base}/#settings")
+            page.evaluate(f"localStorage.setItem('studio.settings.report', JSON.stringify('{target}'))")
+            page.reload()
+            time.sleep(3)
+            btn = page.locator("button.danger", has_text="Write")
+            if btn.count() and btn.first.is_enabled():
+                btn.first.click()
+                page.screenshot(path=str(out / "main-settings-confirm-light.png"))
+                page.locator("dialog button.danger").click()
+                time.sleep(2)
+                page.screenshot(path=str(out / "main-settings-written-light.png"), full_page=True)
+                bak = sc.config.with_name(sc.config.name + ".bak")
+                record("settings: the write leaves a .bak equal to the old file", bak.exists() and bak.read_text() == before_cfg)
+                record("settings: the config copy changed", sc.config.read_text() != before_cfg)
+            else:
+                record("settings: a run with different settings to write", False, "no enabled Write button")
+            page.close()
+        except StopIteration:
+            pass
+        finally:
+            if sc:
+                sc.close()
+
+        # ---- the tune flow, from the button to the comparison, and a profile run from its button
+        if not a.quick and "flow" in parts:
+            sc = Scenario(a, "flow")
             try:
-                if get("/api/state")["strata"]["status"] == "ok":
-                    break
-            except Exception:
-                pass
-            time.sleep(0.1)
-        time.sleep(8)                                              # a few samples for the small multiples
-        base = f"http://127.0.0.1:{STUDIO_PORT}/"
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(args=["--disable-gpu", "--no-sandbox"])
-            run_checks(browser, base, fake, tmp)
-            browser.close()
-    finally:
-        stop.set()
-        studio.terminate()
-        studio.wait(5)
-        fake.stop()
-        shutil.rmtree(tmp, ignore_errors=True)
+                page = browser.new_page(viewport={"width": 1400, "height": 900})
+                page.goto(f"{sc.base}/#runs")
+                time.sleep(2.5)
+                page.locator("button.primary", has_text="Run a profile").first.click()
+                page.locator("dialog button.primary").click()
+                time.sleep(2.5)
+                page.screenshot(path=str(out / "flow-profile-running-light.png"), full_page=True)
+                running = get(f"{sc.base}/api/state")["strata"]["run"]["state"] == "running"
+                record("runs: Run a profile starts a run from the page", running)
+                time.sleep(8)
+                page.goto(f"{sc.base}/#tune")
+                time.sleep(2.5)
+                page.locator("button.primary", has_text="Tune this PC").click()
+                page.locator("#dlg-check").check()
+                page.locator("dialog button.danger").click()
+                wait_end = time.time() + 15
+                while time.time() < wait_end and get(f"{sc.base}/api/tune-flow")["state"] != "running":
+                    time.sleep(0.3)
+                deadline = time.time() + 90 + a.tune_secs
+                shot_mid = False
+                while time.time() < deadline:
+                    snap = get(f"{sc.base}/api/tune-flow")
+                    if snap["stage"] == "tune" and not shot_mid and len(snap.get("lines") or []) > 25:
+                        time.sleep(2.5)
+                        page.screenshot(path=str(out / "flow-tune-running-light.png"), full_page=True)
+                        shot_mid = True
+                    if snap["state"] != "running":
+                        break
+                    time.sleep(1)
+                record("tune: the flow ends succeeded", snap["state"] == "succeeded", snap["state"])
+                time.sleep(3)
+                page.screenshot(path=str(out / "flow-tune-done-light.png"), full_page=True)
+                page.close()
+            finally:
+                sc.close()
+
+        # ---- the states
+        states = [("first-run", dict(state="first-run")), ("no-reports", dict(state="first-run", reports=False)),
+                  ("profile-off", dict(state="profile-off")), ("key", dict(state="key")),
+                  ("unloaded", dict(state="unloaded")), ("unreachable", dict(unreachable=True)),
+                  ("tuning-elsewhere", dict(state="tuning-elsewhere")), ("read-only", dict(read_only=True))]
+        if a.quick:
+            states = states[:2]
+        if "states" not in parts:
+            states = []
+        for name, kw in states:
+            sc = Scenario(a, name, **kw)
+            try:
+                routes = [("now", "now"), ("runs", "runs"), ("tune", "tune")]
+                if name in ("unreachable", "key"):
+                    routes.append(("settings", "settings"))
+                shoot(browser, sc, out, routes, ["light", "phone"] if not a.quick else ["light"], settle=3.5)
+                page = browser.new_page(viewport={"width": 1400, "height": 900})
+                page.goto(f"{sc.base}/#now")
+                time.sleep(3)
+                text = page.evaluate("document.getElementById('banner').innerText + ' ' + document.querySelector('main').innerText")
+                expect = {"first-run": "No requests since Strata started", "no-reports": "No requests since Strata started",
+                          "profile-off": "Profiling is off", "key": "Strata needs an API key", "unloaded": "The model is not loaded",
+                          "unreachable": "Strata does not answer", "tuning-elsewhere": "Strata is tuning",
+                          "read-only": "read-only"}[name]
+                if name == "read-only":
+                    text += page.evaluate("document.querySelector('header').innerText")
+                record(f"state {name}: says so on the page", expect.lower() in text.lower(), expect)
+                page.close()
+            finally:
+                sc.close()
+        browser.close()
     bad = [r for r in RESULTS if not r[1]]
-    print(f"\n{len(RESULTS) - len(bad)} passed, {len(bad)} failed")
+    print(f"\n{len(RESULTS) - len(bad)} of {len(RESULTS)} checks passed; screenshots in {out}")
     return 1 if bad else 0
-
-
-def run_checks(browser, base, fake, tmp):
-    errors = []
-    for scheme in ("light", "dark"):
-        for (w, h, tag) in ((1400, 900, "desktop"), (390, 844, "phone")):
-            ctx = browser.new_context(viewport={"width": w, "height": h}, color_scheme=scheme, device_scale_factor=1)
-            page = ctx.new_page()
-            page.on("pageerror", lambda e: errors.append(str(e)))
-            page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
-            page.goto(base + "#live")
-            page.wait_for_selector("canvas.bar-decode")
-            page.wait_for_timeout(2500)
-            tagname = f"{tag}-{scheme}"
-            st = page.evaluate(JS_VISIBLE_STATS)
-            dec = page.evaluate(JS_DECODE)
-            record(f"live {tagname}: 0 tables, 0 details, 0 <p> over 12 words", st["tables"] == 0 and st["details"] == 0 and st["longP"] == 0,
-                   f"tables={st['tables']} details={st['details']} p>12={st['longP']} p>8={st['p8']}")
-            record(f"live {tagname}: no visible text node over 8 words", not st["longText"], "; ".join(st["longText"])[:120])
-            record(f"live {tagname}: hero has the largest font", st["heroFont"] >= st["maxFont"] and st["heroFont"] == (56 if w > 600 else 44),
-                   f"hero={st['heroFont']} max={st['maxFont']} {st['maxEl']}")
-            record(f"live {tagname}: no GPU label, one key row", not st["hasGPU"] and st["keyRows"] == 1, f"keyrows={st['keyRows']}")
-            names = dec["names"]
-            record(f"live {tagname}: decode bar has 5 segments in order", names == ["card", "CPU experts", "draft", "adapt wait", "other"], str(names))
-            op = dec["opacity"].split(",")
-            dom_i = names.index(dec["dominant"]) if dec["dominant"] in names else -1
-            record(f"live {tagname}: dominant segment opacity 1, others .55", dom_i >= 0 and op[dom_i] == "1" and op.count("0.55") == 4, dec["opacity"])
-            if w > 600:
-                record(f"live {tagname}: decode bar >= 1060 px", dec["areaW"] >= 1060, f"{dec['areaW']:.0f}")
-                total = sum(dec["widths"])
-                share = dec["widths"][dom_i] / total if total else 0
-                record(f"live {tagname}: dominant width = share x bar", dom_i >= 0 and abs(dec["widths"][dom_i] - share * dec["areaW"]) <= 2, f"{dec['widths'][dom_i]:.0f}px")
-                record(f"live {tagname}: fits 1400x900, no scrollbar", st["scrollH"] <= 900 and st["bottom"] <= 900, f"scrollH={st['scrollH']} bottom={st['bottom']:.0f}")
-            else:
-                record(f"live {tagname}: scrollWidth <= 390 and decode bar >= 340", st["scrollW"] <= 390 and dec["canvasW"] >= 340, f"scrollW={st['scrollW']} bar={dec['canvasW']:.0f}")
-            page.screenshot(path=str(SHOTS / f"live-{tag}-{scheme}.png"), full_page=(w < 600))
-
-            # compare
-            page.goto(base + "#compare")
-            page.wait_for_selector("canvas.bullets")
-            page.wait_for_timeout(1500)
-            st = page.evaluate(JS_VISIBLE_STATS)
-            rows = page.evaluate("() => [...document.querySelectorAll('#view-compare canvas.bullets')].flatMap((c) => JSON.parse(c.dataset.rows || '[]'))")
-            record(f"compare {tagname}: 0 tables, 0 details, 0 <p> over 12 words", st["tables"] == 0 and st["details"] == 0 and st["longP"] == 0,
-                   f"tables={st['tables']} p>12={st['longP']} p>8={st['p8']}")
-            record(f"compare {tagname}: no visible text node over 8 words", not st["longText"], "; ".join(st["longText"])[:120])
-            record(f"compare {tagname}: every row has a noise band", rows and all(r["band"] is not None and r["band"] > 0 for r in rows if r["b"] is not None and r["a"] is not None), f"{len(rows)} rows")
-            record(f"compare {tagname}: hero largest, one key row", st["heroFont"] >= st["maxFont"] and st["keyRows"] == 1, f"hero={st['heroFont']} max={st['maxFont']} keyrows={st['keyRows']}")
-            if w > 600:
-                record(f"compare {tagname}: fits 1400x900", st["scrollH"] <= 900, f"scrollH={st['scrollH']}")
-            else:
-                record(f"compare {tagname}: scrollWidth <= 390", st["scrollW"] <= 390, f"{st['scrollW']}")
-            page.screenshot(path=str(SHOTS / f"compare-{tag}-{scheme}.png"), full_page=(w < 600))
-
-            # tune (idle, last tune record)
-            page.goto(base + "#tune")
-            page.wait_for_timeout(1500)
-            st = page.evaluate(JS_VISIBLE_STATS)
-            record(f"tune {tagname}: 0 tables, 0 details, 0 <p> over 12 words", st["tables"] == 0 and st["details"] == 0 and st["longP"] == 0, f"tables={st['tables']} p>12={st['longP']}")
-            record(f"tune {tagname}: no visible text node over 8 words", not st["longText"], "; ".join(st["longText"])[:120])
-            if w <= 600:
-                record(f"tune {tagname}: scrollWidth <= 390", st["scrollW"] <= 390, f"{st['scrollW']}")
-            page.screenshot(path=str(SHOTS / f"tune-{tag}-{scheme}.png"), full_page=True)
-            ctx.close()
-
-    # behaviour checks (desktop, light)
-    ctx = browser.new_context(viewport={"width": 1400, "height": 900})
-    page = ctx.new_page()
-    page.on("pageerror", lambda e: errors.append(str(e)))
-    page.goto(base + "#live")
-    page.wait_for_selector("canvas.bar-decode")
-    page.evaluate("() => { window.__marker = 42; }")
-    nav = page.evaluate("() => [...document.querySelectorAll('#tabs a')].map((a) => a.textContent.trim())")
-    record("nav has exactly Live, Compare, Tune", nav == ["Live", "Compare", "Tune"], str(nav))
-    page.click("#data-btn")
-    page.wait_for_selector("#data-live table")
-    n_tables = page.evaluate("() => document.querySelectorAll('#data-live table').length")
-    with page.expect_download() as dl:
-        page.click("#data-live button:has-text('CSV')")
-    csv_ok = dl.value.suggested_filename.endswith(".csv")
-    page.click("#data-btn")
-    page.wait_for_selector("canvas.bar-decode", state="visible")
-    record("Data toggle shows tables, CSV downloads, charts return without reload",
-           n_tables >= 1 and csv_ok and page.evaluate("() => window.__marker") == 42, f"tables={n_tables}")
-    chips = page.evaluate("() => document.querySelectorAll('.chip-warn').length")
-    record("settings: at most one chip on the main view, table only in drawer", chips <= 1 and page.evaluate("() => document.querySelectorAll('main table').length") == 0, f"chips={chips}")
-    page.click("#settings-btn")
-    page.wait_for_selector("#drawer[open] table")
-    page.screenshot(path=str(SHOTS / "settings-drawer.png"))
-    page.keyboard.press("Escape")
-
-    # the tune flow through the Studio, then the compare in place on the Tune view
-    page.goto(base + "#tune")
-    page.wait_for_timeout(500)
-    page.click("button:has-text('Tune this PC')")
-    page.wait_for_selector("#confirm-dialog[open]")
-    page.click("#confirm-ok")
-    page.wait_for_timeout(2500)
-    page.screenshot(path=str(SHOTS / "tune-running.png"))
-    page.wait_for_function("() => document.querySelectorAll('.step-done').length === 4", timeout=60000)
-    page.wait_for_selector("#view-tune canvas.bullets", state="visible", timeout=15000)
-    page.wait_for_timeout(1500)
-    h = page.evaluate("() => location.hash")
-    record("after step 4 the compare is visible on Tune, hash unchanged", h == "#tune", h)
-    cands = page.evaluate("() => [...document.querySelectorAll('#view-tune canvas.cand')].map((c) => [c.dataset.kept, c.dataset.best])")
-    record("4 candidate charts drawn, kept comes from the result", len(cands) == 4 and cands[0][0] == "0.55" and cands[0][1] == "0.35", str(cands))
-    page.screenshot(path=str(SHOTS / "tune-done.png"), full_page=True)
-    ctx.close()
-
-    # reduced motion
-    ctx = browser.new_context(viewport={"width": 1400, "height": 900}, reduced_motion="reduce")
-    page = ctx.new_page()
-    page.goto(base + "#tune")
-    page.wait_for_timeout(1200)
-    anim = page.evaluate("() => [...document.querySelectorAll('.pulse, .step-dot')].map((e) => getComputedStyle(e).animationName)")
-    record("reduced motion: no CSS animation runs", all(a == "none" for a in anim), str(anim))
-    ctx.close()
-    record("no page errors or console errors", not errors, "; ".join(errors)[:200])
 
 
 if __name__ == "__main__":

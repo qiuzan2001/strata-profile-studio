@@ -112,6 +112,10 @@ class FakeStrata:
         self.last = request_doc()
         self.history_entries: list[dict] = []
         self.metrics_requests: list[dict] = []
+        self.hardware: dict = {}                     # /metrics hardware, hardware_static and history (telemetry)
+        self.hardware_static: dict = {}
+        self.hw_history: dict = {}
+        self.live_state = {"state": "idle"}
         self.engine = dict(ENGINE)
         self.run = {"state": "idle", "lines": [], "started_at": None, "elapsed_s": None, "returncode": None,
                     "report": None, "note": None}
@@ -170,8 +174,12 @@ class FakeStrata:
                 if not self._authorized():
                     return
                 if path == "/metrics":
-                    return self._reply(200, {"engine": dict(fake.engine), "live": {"state": "idle"},
-                                             "requests": list(fake.metrics_requests)})
+                    with fake.lock:
+                        return self._reply(200, {"engine": dict(fake.engine), "live": dict(fake.live_state),
+                                                 "requests": list(fake.metrics_requests),
+                                                 "hardware": dict(fake.hardware),
+                                                 "hardware_static": dict(fake.hardware_static),
+                                                 "history": copy.deepcopy(fake.hw_history), "time": time.time()})
                 if path.startswith("/profile") and not fake.profile:
                     return self._reply(404, {"error": {"message": "not found"}})
                 if path == "/profile/last":

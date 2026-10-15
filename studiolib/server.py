@@ -13,7 +13,7 @@ import socket
 import urllib.parse
 from pathlib import Path
 
-from . import __version__, calibparse, compare as compare_mod, settings as settings_mod
+from . import __version__, calibparse, compare as compare_mod, configwrite, settings as settings_mod
 from .flow import FlowError
 from .poller import MSG_KEY, MSG_PROFILE_OFF
 from .reports import REPORT_ID_RE, ReportError
@@ -21,10 +21,10 @@ from .state import NOTE_CHARS
 from .strata import StrataError
 
 MAX_POST = 64 * 1024
-STATIC = {"app.js": "text/javascript; charset=utf-8", "charts.js": "text/javascript; charset=utf-8",
-          "style.css": "text/css; charset=utf-8",
-          "favicon.svg": "image/svg+xml",
-          "vendor/chart-4.4.1.umd.js": "text/javascript; charset=utf-8"}
+STATIC = {name: "text/javascript; charset=utf-8" for name in
+          ("lib.js", "charts.js", "diagram.js", "panel.js", "now.js", "runs.js", "tune.js", "settings.js", "app.js",
+           "vendor/chart-4.4.1.umd.js")}
+STATIC.update({"style.css": "text/css; charset=utf-8", "favicon.svg": "image/svg+xml"})
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "
        "frame-ancestors 'none'; base-uri 'none'")
 LOOPBACK = ("127.0.0.1", "::1", "localhost")
@@ -39,7 +39,7 @@ class StudioApp:
     """What the handlers share."""
 
     def __init__(self, *, strata_url, results_dir, config_path, key, studio_key, host, port, client, poller,
-                 flow, reports, state, web_dir, started_at, allow_hosts=()):
+                 flow, reports, state, web_dir, started_at, allow_hosts=(), engine_log=None, read_only=False):
         self.strata_url, self.results_dir, self.config_path = strata_url, results_dir, config_path
         self.key_set = bool(key)
         self.studio_key = studio_key                   # None: no bearer needed on /api/
@@ -48,6 +48,8 @@ class StudioApp:
         self.web_dir = Path(web_dir)
         self.started_at = started_at
         self.allow_hosts = [h.strip().lower() for h in allow_hosts if h and h.strip()]
+        self.engine_log = engine_log
+        self.read_only = bool(read_only)
 
     @staticmethod
     def split_host(header: str) -> tuple[str, str | None]:
@@ -92,10 +94,87 @@ class StudioApp:
         return {"studio": {"version": __version__, "started_at": self.started_at, "strata_url": self.strata_url,
                            "results_dir": str(self.results_dir), "results_dir_exists": self.reports.exists(),
                            "config_path": str(self.config_path) if self.config_path else None,
-                           "key_set": self.key_set, "auth_required": self.studio_key is not None},
+                           "key_set": self.key_set, "auth_required": self.studio_key is not None,
+                           "read_only": self.read_only},
                 "strata": p.strata_block(),
                 "flow": {"id": snap["id"], "state": snap["state"], "stage": snap["stage"]},
                 "estimates": est}
+
+    def run_windows(self) -> list[dict]:
+        """The time spans of the profile runs and tunes the Studio knows of, newest first: {"from", "to", "kind",
+        "report", "tune"}.  A report's span is its folder's mtime minus its elapsed time; a tune's stages are laid
+        end to end from its start."""
+        spans = []
+        for r in self.poller.scan_reports()["reports"]:
+            if r.get("ok") and isinstance(r.get("mtime"), (int, float)) and isinstance(r.get("elapsed_s"), (int, float)):
+                spans.append({"from": r["mtime"] - r["elapsed_s"] - 2.0, "to": r["mtime"] + 2.0, "kind": "profile",
+                              "report": r["id"], "tune": (r.get("tune") or {}).get("id")})
+        for t in self.state.tunes():
+            at = t.get("started_at")
+            if not isinstance(at, (int, float)):
+                continue
+            for st in t.get("stages") or []:
+                el = st.get("elapsed_s") if isinstance(st.get("elapsed_s"), (int, float)) else 0.0
+                if st.get("key") in ("tune", "reload"):
+                    spans.append({"from": at, "to": at + el, "kind": st["key"], "report": None, "tune": t.get("id")})
+                at += el
+        snap = self.flow.snapshot()
+        for st in snap.get("stages") or []:
+            if st.get("key") in ("tune", "reload") and isinstance(st.get("started_at"), (int, float)):
+                spans.append({"from": st["started_at"], "to": st["started_at"] + (st.get("elapsed_s") or 0.0),
+                              "kind": st["key"], "report": None, "tune": snap.get("id")})
+        raw = self.poller.tune_status()
+        for kind, block in (("profile", raw), ("tune", raw.get("tune") if isinstance(raw.get("tune"), dict) else {})):
+            if isinstance(block.get("started_at"), (int, float)) and isinstance(block.get("elapsed_s"), (int, float)):
+                spans.append({"from": block["started_at"], "to": block["started_at"] + block["elapsed_s"],
+                              "kind": kind, "report": None, "tune": None, "strata": True})
+        spans.sort(key=lambda x: x["from"], reverse=True)
+        return spans
+
+    def request_index(self) -> dict:
+        """(prompt tokens, reused, generated, decode tok/s) -> (report id, request id), over every report: a live
+        sample with the same four numbers is that report's request."""
+        scan = self.poller.scan_reports()
+        key = tuple((r["id"], r.get("mtime")) for r in scan["reports"] if r.get("ok"))
+        if getattr(self, "_req_index", (None, None))[0] == key:
+            return self._req_index[1]
+        index = {}
+        for e in self.reports.pool():
+            for q in e["rep"].get("requests") or []:
+                k = (q.get("prompt_tokens"), q.get("reused"), q.get("generated"), q.get("decode_tok_s"))
+                if None not in k[:3]:
+                    index.setdefault(k, []).append((e["id"], q["id"], q["label"]))
+        self._req_index = (key, index)
+        return index
+
+    def live_doc(self, since: int) -> dict:
+        doc = self.poller.live(since)
+        spans = self.run_windows()
+        index = self.request_index()
+        for x in doc["samples"]:
+            run = None
+            cands = index.get((x.get("prompt_tokens"), x.get("reused"), x.get("generated"), x.get("decode_tok_s"))) or []
+            t = x.get("seen_at")
+            inside = [c for c in cands if any(sp["report"] == c[0] and isinstance(t, (int, float)) and
+                                              sp["from"] <= t <= sp["to"] for sp in spans)]
+            hit = (inside or cands or [None])[0]       # the run whose time span holds it, else the newest such run
+            x["report_request"] = {"report": hit[0], "id": hit[1], "label": hit[2]} if hit else None
+            t = x.get("seen_at")
+            if isinstance(t, (int, float)):
+                hits = [sp for sp in spans if sp["from"] <= t <= sp["to"]]
+                # a report's span wins over the tune it belongs to: it names the request
+                hits.sort(key=lambda sp: (sp["report"] is None, sp["to"] - sp["from"]))
+                if hits:
+                    sp = hits[0]
+                    run = {"kind": sp["kind"], "report": sp["report"], "tune": sp["tune"]}
+            if run is None and x.get("tag"):
+                tag = x["tag"]
+                run = {"kind": "profile" if tag.startswith("profile") else tag, "report": None, "tune": None}
+            if run is None and hit:
+                run = {"kind": "profile", "report": hit[0], "tune": None}
+            x["run"] = run
+        doc["spans"] = [{k: v for k, v in sp.items() if k != "strata"} for sp in spans[:100]]
+        return doc
 
     def run_doc(self) -> dict:
         """The running (or last) profile run: its state and output lines, for the Reports view."""
@@ -114,6 +193,52 @@ class StudioApp:
                 snap["lines"] = lines
                 snap["candidates"] = calibparse.parse(lines)
         return snap
+
+    def hardware_doc(self) -> dict:
+        doc = self.poller.hardware_doc()
+        log = self.engine_log.facts() if self.engine_log else {"path": None, "readable": False, "probe": None,
+                                                                 "vram_warning": None, "probes": 0}
+        doc["log"] = log
+        doc["window"] = self.last_window()
+        return doc
+
+    def last_window(self) -> dict | None:
+        """The newest sample with a decode split: what the PC diagram highlights."""
+        doc = self.poller.live(0)
+        for x in reversed(doc["samples"]):
+            if x.get("window_ms") or x.get("prompt_groups_ms"):
+                return {k: x.get(k) for k in ("seq", "seen_at", "window_ms", "ms_per_window", "prompt_groups_ms",
+                                              "prompt_ms", "decode_ms", "decode_tok_s", "hit_rate", "pcie_share",
+                                              "cpu_experts")}
+        return None
+
+    def tunes_doc(self) -> dict:
+        """The tune records, each with its candidates parsed again from its stored lines by this version of the
+        parser, against what the engine ran with before the tune (the settings' "before" column)."""
+        out = []
+        for t in self.state.tunes():
+            lines = t.get("lines_tail") or []
+            rows = {r.get("flag"): r for r in ((t.get("settings") or {}).get("rows") or []) if isinstance(r, dict)}
+            if lines:
+                was = {}
+                for flag, key in (("--pcie-frac", "pcie_frac"), ("--spec-min-p", "spec_min_p"),
+                                  ("--pool-workers", "pool_workers")):
+                    if (rows.get(flag) or {}).get("before") is not None:
+                        was[key] = rows[flag]["before"]
+                tier = [(rows.get(f) or {}).get("before") for f in ("--adapt-every", "--adapt-swaps", "--adapt-decay")]
+                if rows:
+                    was["adapt"] = "/".join(tier) if all(tier) else "default"
+                t["candidates"] = calibparse.parse(lines, was)
+            out.append(t)
+        return {"tunes": out}
+
+    def busy_reason(self) -> str | None:
+        if self.flow.running():
+            return "A tune is running; Strata writes the config file at its end. Wait for it to finish."
+        tune = self.poller.tune_status().get("tune")
+        if isinstance(tune, dict) and tune.get("state") == "running":
+            return "Strata is tuning; it writes the config file at the end. Wait for it to finish."
+        return None
 
     def settings_doc(self) -> dict:
         p = self.poller
@@ -249,6 +374,9 @@ def make_handler(app: StudioApp):
                 return self._error(404, "Not found.")
             if not self._key_ok():
                 return
+            if app.read_only:
+                return self._error(403, "This Studio was started with --read-only: it starts nothing and writes "
+                                        "nothing.")
             body = self._body()
             if body is None:
                 return
@@ -276,7 +404,7 @@ def make_handler(app: StudioApp):
                     since = int((query.get("since") or ["0"])[0])
                 except ValueError:
                     return self._error(400, "since must be a whole number.")
-                return self._json(200, app.poller.live(max(0, since)))
+                return self._json(200, app.live_doc(max(0, since)))
             if path == "/api/reports":
                 return self._json(200, app.poller.scan_reports())
             m = re.match(r"^/api/reports/([^/]+)$", path)
@@ -286,12 +414,16 @@ def make_handler(app: StudioApp):
                 return self._compare((query.get("a") or [""])[0], (query.get("b") or [""])[0])
             if path == "/api/settings":
                 return self._json(200, app.settings_doc())
+            if path == "/api/settings/apply-preview":
+                return self._apply_preview((query.get("report") or [""])[0])
+            if path == "/api/hardware":
+                return self._json(200, app.hardware_doc())
             if path == "/api/tune-flow":
                 return self._json(200, app.tune_flow_doc())
             if path == "/api/run-profile":
                 return self._json(200, app.run_doc())
             if path == "/api/tunes":
-                return self._json(200, {"tunes": app.state.tunes()})
+                return self._json(200, app.tunes_doc())
             self._error(404, "Not found.")
 
         def _report(self, rid: str):
@@ -300,6 +432,32 @@ def make_handler(app: StudioApp):
             except ReportError as e:
                 return self._error(404, str(e))
             self._json(200, rep)
+
+        def _apply_preview(self, rid: str):
+            try:
+                rep = app.reports.get(rid)
+            except ReportError as e:
+                return self._error(404, str(e))
+            try:
+                doc = configwrite.preview(app.config_path, rep)
+            except configwrite.ConfigWriteError as e:
+                return self._error(e.status, e.message)
+            doc["busy"] = app.busy_reason()
+            self._json(200, doc)
+
+        def _apply(self, body: dict):
+            if body.get("confirm") is not True:
+                return self._error(400, "The write needs \"confirm\": true.")
+            rid = body.get("report")
+            try:
+                rep = app.reports.get(rid if isinstance(rid, str) else "")
+            except ReportError as e:
+                return self._error(404, str(e))
+            try:
+                doc = configwrite.apply(app.config_path, rep, body.get("flags"), body.get("sha"), app.busy_reason())
+            except configwrite.ConfigWriteError as e:
+                return self._error(e.status, e.message)
+            self._json(200, doc)
 
         def _compare(self, a: str, b: str):
             try:
@@ -343,6 +501,8 @@ def make_handler(app: StudioApp):
                 return self._json(200, {"id": ident})
             if path == "/api/notes":
                 return self._notes(body)
+            if path == "/api/settings/apply":
+                return self._apply(body)
             self._error(404, "Not found.")
 
         def _run_profile(self, body: dict):

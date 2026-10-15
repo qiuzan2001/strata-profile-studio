@@ -8,6 +8,7 @@ import unittest
 
 import support
 from fakestrata import FakeStrata, request_doc
+from studiolib.requests import REQUEST_KEYS
 from studiolib.state import State, StateError
 from support import ROOT, request, start_studio, wait_for
 
@@ -37,7 +38,7 @@ class Routes(Base):
         self.assertEqual(st, 200)
         self.assertEqual(set(doc), {"studio", "strata", "flow", "estimates"})
         self.assertEqual(set(doc["studio"]), {"version", "started_at", "strata_url", "results_dir", "results_dir_exists",
-                                              "config_path", "key_set", "auth_required"})
+                                              "config_path", "key_set", "auth_required", "read_only"})
         self.assertEqual(set(doc["strata"]), {"status", "checked_at", "message", "model", "loaded", "max_context",
                                               "api_key", "profile", "routes", "run", "tune"})
         self.assertEqual(set(doc["strata"]["tune"]), {"available", "unavailable_reason", "state", "elapsed_s",
@@ -54,14 +55,12 @@ class Routes(Base):
     def test_live_keys_and_sample_keys(self):
         s = self.studio()
         _, _, doc = request(s, "GET", "/api/live?since=0")
-        self.assertEqual(set(doc), {"max", "last_seq", "samples"})
+        self.assertEqual(set(doc), {"max", "last_seq", "samples", "spans"})
         self.assertEqual(doc["max"], 300)
         sample = doc["samples"][0]
-        self.assertEqual(set(sample), {"seq", "seen_at", "source", "tag", "open", "after_load", "prompt_tokens",
-                                       "reused", "read", "prompt_tok_s", "prompt_ms", "prompt_gpu_ms",
-                                       "prompt_groups_ms", "generated", "decode_tok_s", "decode_ms", "ms_per_window",
-                                       "tokens_per_window", "window_ms", "cpu_experts", "hit_rate", "pcie_share",
-                                       "kv_hit", "drafts_offered", "drafts_accepted"})
+        self.assertEqual(set(sample), {"seq", "seen_at", "source", "tag", "open", "after_load", "kind", "run", "late",
+                                       "report_request",
+                                       *REQUEST_KEYS})
         self.assertEqual(sample["window_ms"]["adapt wait"], 1.44)
         self.assertEqual(sample["source"], "last")
         status, _, _ = request(s, "GET", "/api/live?since=abc")
@@ -73,11 +72,11 @@ class Routes(Base):
         self.assertEqual(set(doc), {"dir", "exists", "reports"})
         self.assertEqual(set(doc["reports"][0]), {"id", "date", "order", "gpu", "model", "quant", "context",
                                                   "strata_version", "elapsed_s", "chat_tps", "ok", "error",
-                                                  "settings_short", "tune", "note"})
+                                                  "settings_short", "tune", "note", "headline", "mtime"})
         _, _, rep = request(s, "GET", "/api/reports/" + support.A)
         self.assertEqual(set(rep), {"id", "path", "date", "machine", "params", "elapsed_s", "settings", "prompts",
                                     "decode", "agent", "chat_runs", "findings", "skipped", "failures",
-                                    "note", "tune"})
+                                    "note", "tune", "environment", "requests"})
         self.assertEqual(set(rep["machine"]), {"gpu", "gpu_vram_mib", "cpu", "ram_gib", "model", "quant", "context",
                                                "strata_version", "engine_version"})
         self.assertEqual(set(rep["settings"]), {"source", "rows"})
@@ -92,12 +91,12 @@ class Routes(Base):
         s = self.studio()
         st, _, doc = request(s, "GET", f"/api/compare?a={support.A}&b={support.B}")
         self.assertEqual(st, 200)
-        self.assertEqual(set(doc), {"a", "b", "warnings", "floors", "verdicts", "rows", "settings"})
+        self.assertEqual(set(doc), {"a", "b", "warnings", "floors", "verdicts", "rows", "settings", "sign"})
         self.assertEqual(set(doc["floors"]), {"minimum", "assumed", "pairs"})
         self.assertEqual(set(doc["verdicts"][0]), {"group", "key", "state", "text", "floor_note"})
         self.assertIn("assumed floor", doc["verdicts"][0]["text"])
         self.assertEqual(set(doc["rows"][0]), {"group", "key", "metric", "a", "b", "delta", "pct", "better", "floor",
-                                               "floor_kind", "state"})
+                                               "floor_kind", "floor_assumed", "state"})
         self.assertEqual(set(doc["settings"][0]), {"flag", "a", "b", "changed"})
         for bad in (f"a={support.A}&b={support.BROKEN}", f"a={support.A}&b=nope", "a=../x&b=y", ""):
             st, _, doc = request(s, "GET", "/api/compare?" + bad)
@@ -294,7 +293,8 @@ class Checks(Base):
         self.assertIn("frame-ancestors 'none'", h["content-security-policy"])
         self.assertEqual(h["x-content-type-options"], "nosniff")
         self.assertEqual(h["referrer-policy"], "no-referrer")
-        for name, ctype in (("app.js", "javascript"), ("charts.js", "javascript"), ("style.css", "text/css"),
+        for name, ctype in (("app.js", "javascript"), ("charts.js", "javascript"), ("now.js", "javascript"),
+                            ("diagram.js", "javascript"), ("style.css", "text/css"),
                             ("favicon.svg", "image/svg+xml"), ("vendor/chart-4.4.1.umd.js", "javascript")):
             st, h, _ = request(s, "GET", "/static/" + name)
             self.assertEqual(st, 200, name)
@@ -540,39 +540,45 @@ class Vendored(unittest.TestCase):
             for word in bad:
                 self.assertNotIn(word, text, f"{f.name} uses {word}")
 
-    def test_page_has_three_views_and_a_data_toggle(self):
+    def test_page_has_four_views_a_panel_and_a_dialog(self):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         nav = re.findall(r'<a class="tab" href="#(\w+)"', html)
-        self.assertEqual(nav, ["live", "compare", "tune"])
-        self.assertEqual(re.findall(r'<section id="view-(\w+)"', html), ["live", "compare", "tune"])
-        for needle in ('id="data-btn"', 'id="settings-btn"', 'id="drawer"'):
+        self.assertEqual(nav, ["now", "runs", "tune", "settings"])
+        self.assertEqual(re.findall(r'<section id="view-(\w+)"', html), ["now", "runs", "tune", "settings"])
+        for needle in ('id="panel"', '<dialog id="dialog">', 'id="banner"', 'id="status"', 'id="theme"'):
             self.assertIn(needle, html)
 
-    def test_no_table_in_default_views(self):
-        """Tables are built by one helper, which only the Data view and the drawer call."""
-        js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
-        self.assertNotIn("<table", (ROOT / "web" / "index.html").read_text(encoding="utf-8"))
-        self.assertEqual(len(re.findall(r"el\('table'", js)), 1)
-        for fn in re.findall(r"^  function (build\w+|render(?:Live|Compare|Tune|Chrome))\(", js, re.M):
-            body = js.split(f"function {fn}(", 1)[1].split("\n  }\n", 1)[0]
-            self.assertNotIn("table(", body, fn)
-        for fn in ("renderData", "renderDrawer"):                     # the only two callers
-            body = js.split(f"function {fn}(", 1)[1].split("\n  }\n", 1)[0]
-            self.assertEqual(len(re.findall(r"\btable\(", body)), 1, fn)
+    def test_every_script_the_page_loads_is_served(self):
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        from studiolib.server import STATIC
+        for src in re.findall(r'<script src="/static/([^"]+)"', html):
+            self.assertIn(src, STATIC)
+            self.assertTrue((ROOT / "web" / src).is_file(), src)
+        self.assertNotIn("chart-4.4.1", html)                 # vendored for its tests, not loaded
 
-    def test_only_the_charts_and_chrome_names_the_page_uses(self):
+    def test_the_part_colours_are_tokens_with_a_dark_step(self):
         css = (ROOT / "web" / "style.css").read_text(encoding="utf-8")
-        for token in ("--k-card", "--k-cpu", "--k-draft", "--k-pcie", "--k-wait", "--k-other", "--good", "--bad", "--noise"):
-            self.assertIn(token + ":", css)
-        for old in ("--series-1", "--seq-1", "GroupToken", "BUCKETS"):
-            self.assertNotIn(old, css + (ROOT / "web" / "charts.js").read_text(encoding="utf-8"))
+        for token in ("--k-gpu", "--k-cpu", "--k-draft", "--k-adapt", "--k-other", "--k-pcie", "--k-dequant",
+                      "--k-gemm", "--k-attn", "--k-gdn", "--good", "--bad", "--noise"):
+            self.assertEqual(css.count(token + ":"), 3, token)  # light, dark (OS), dark (toggle)
+        self.assertIn('@media (prefers-color-scheme: dark)', css)
+        self.assertIn(':root[data-theme="dark"]', css)
 
     def test_the_page_has_no_inline_script_or_style(self):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         self.assertNotRegex(html, r"<script(?![^>]*\bsrc=)[^>]*>")
         self.assertNotIn("<style", html)
         self.assertNotRegex(html, r"\sstyle=")
-        self.assertNotRegex(html, r"https?://(?!127\.0\.0\.1|localhost)")      # nothing leaves the PC
+        for f in (ROOT / "web").glob("*.js"):
+            self.assertNotRegex(f.read_text(encoding="utf-8"), r"https?://(?!127\.0\.0\.1|localhost|www\.w3\.org)", f.name)
+
+    def test_tables_only_in_details(self):
+        """A table is built by one helper (S.table); Now builds one only behind its "All numbers" switch."""
+        js = {f.name: f.read_text(encoding="utf-8") for f in (ROOT / "web").glob("*.js")}
+        self.assertEqual(sum(t.count("el('table'") for t in js.values()), 1)
+        now = js["now.js"]
+        self.assertEqual(now.count("S.table("), 1)
+        self.assertIn("if (ui.table) grid.appendChild(tableCard(A, win));", now)
 
 
 if __name__ == "__main__":
