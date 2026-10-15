@@ -359,12 +359,27 @@
     const onHover = (chartRef) => (evt, active, chart) => {
       sync(active.length ? active[0].index : null, chart);
     };
-    const mk = (canvas, type, showX) => {
+    // the name and unit of each small chart, 12 px muted, top-left inside the chart area
+    const nameOf = (text) => ({
+      id: 'studioName',
+      afterDraw(chart) {
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.font = font(12, 400, h.pal || pal());
+        ctx.fillStyle = (h.pal || pal())['--ink-muted'];
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText(text, chart.chartArea.left + 4, chart.chartArea.top + 2);
+        ctx.restore();
+      },
+    });
+    const mk = (canvas, type, showX, name) => {
       const options = common(showX);
       options.onHover = onHover();
-      return new Chart(canvas, { type, data: { labels: [], datasets: [] }, options });
+      return new Chart(canvas, { type, data: { labels: [], datasets: [] }, options, plugins: [nameOf(name)] });
     };
-    h.charts = [mk(canvases[0], 'line', false), mk(canvases[1], 'line', false), mk(canvases[2], 'bar', true)];
+    h.charts = [mk(canvases[0], 'line', false, 'tok/s'), mk(canvases[1], 'line', false, 'hit %'),
+      mk(canvases[2], 'bar', true, 'ms / window')];
     h.charts[2].options.scales.x.stacked = true;
     h.charts[2].options.scales.y.stacked = true;
     h.charts[2].options.scales.y.beginAtZero = true;
@@ -504,7 +519,7 @@
       c.options.layout.padding.right = small ? 72 : 120;
       c.options.scales.x.max = spec.max;
       c.options.scales.x.ticks.color = p['--ink-muted'];
-      c.options.scales.x.afterFit = (s) => { s.height = 18; };
+      c.options.scales.x.afterFit = (s) => { s.height = 26; };
       c.data.labels = spec.rows.map((r) => r.label);
       c.data.datasets = [{
         data: spec.rows.map((r) => (isNum(r.b) ? r.b : null)), backgroundColor: alpha(p['--ink'], 0.85),

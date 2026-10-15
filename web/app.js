@@ -694,7 +694,7 @@
       g.wrap.hidden = rs.length === 0;
       if (!rs.length || !g.handle) return;
       const maxv = Math.max(...rs.flatMap((r) => [r.a, r.b, isNum(r.a) && isNum(r.floor) ? r.a + r.floor : null].filter(isNum)), 1);
-      g.box.style.height = `${rs.length * 28 + 18}px`;
+      g.box.style.height = `${rs.length * 26 + 26}px`;
       const mag = Math.pow(10, Math.floor(Math.log10(maxv * 1.1)));
       const step = mag / 5;
       g.handle.update({ rows: rs, max: Math.ceil((maxv * 1.1) / step) * step, showTick: pair });
