@@ -9,21 +9,20 @@ It exists to answer questions such as *"the calibration measured 96.6 tok/s agai
 after it showed 7 ms of adapt wait per window against 1.4 ms before. Did the tune help?"* The comparison view settles
 that with the profile tool's own numbers, and says whether a change is larger than this PC's run-to-run noise.
 
-| Live | Reports |
+| Live | Compare |
 | --- | --- |
-| ![Live](docs/screenshots/live.png) | ![Reports](docs/screenshots/reports.png) |
-| **Compare** | **Tune** |
-| ![Compare](docs/screenshots/compare.png) | ![Tune](docs/screenshots/tune.png) |
-| **Settings** | |
-| ![Settings](docs/screenshots/settings.png) | |
+| ![Live](docs/screenshots/live-desktop-light.png) | ![Compare](docs/screenshots/compare-desktop-light.png) |
+| **Tune** | **Settings drawer** |
+| ![Tune](docs/screenshots/tune-done.png) | ![Settings](docs/screenshots/settings-drawer.png) |
 
-*The images above are placeholders until real screenshots are taken on a PC with Strata running.*
+On a phone (390 px wide) and in the dark theme the same views look like `docs/screenshots/live-phone-dark.png`,
+`compare-phone-light.png` and so on: every view exists at both widths in both themes.
 
 ## Requirements
 
 - Linux, Python 3.11 or newer, and a browser. (It may work on other systems; only Linux is tested.)
 - Strata, running on the same PC. For **Live**, **Run a profile** and **Tune** it needs `"profile": true` in
-  `strata-<model>.json` (or `serve/server.py --profile`). **Reports**, **Compare** and **Settings** work without that,
+  `strata-<model>.json` (or `serve/server.py --profile`). **Compare** (and the settings drawer) work without that,
   and without Strata running at all.
 
 ## Start
@@ -57,30 +56,25 @@ you press Ctrl-C. Closing the browser tab does not stop anything: the polling an
 
 ## The views
 
-**Live.** Each request's breakdown as it happens, from Strata's `/profile/last` (and `/profile/history`, so requests
-that came closer together than a second still appear). Four tiles (last decode speed, expert cache hit rate, last
-prompt read, ms per window) and four charts: decode speed coloured by context size, hit rate, the decode window split
-into GPU, CPU experts, draft, adapt wait and other, and the prompt read split by phase. A table lists the last 20
-requests. With profiling off, speed and hit rate still come from `/metrics`; the window and phase charts need profiling.
+Three tabs, one question each, one picture each. Every number that is not in the picture is behind the **Data**
+button of that view (tables, with CSV and JSON downloads); the speed settings are in the **⚙ drawer**.
 
-**Reports.** Every profile report in `--results`, newest first, drawn as charts: the prompt phases (R1), the decode
-window per kind of request (R2), and the agent session turn by turn (R3a hit rate, R3b decode speed), with the
-settings the report ran with, its findings and a note you can keep. *Run a profile* starts Strata's own run and shows
-its output. Check two reports and *Compare these two* opens them side by side.
+**Live.** *How fast is it, and where does the time go?* The newest decode speed as the big number with its change
+against the recent median and a sparkline; a ring of where the experts came from (card cache, PCIe, CPU) with a tick
+at the median hit rate; one bar for the decode window (card, CPU experts, draft, adapt wait, other; the biggest
+part is named above it) and one for the prompt read (PCIe + dequant, compute, other); then three small charts on
+one x: decode speed, hit rate and the window split of each request. The 30/60/300 switch sets how many requests.
 
-**Compare.** Two reports with a verdict per kind of request ("chat: 8.2% faster, 75.7 → 81.9 tok/s (noise floor
-4.6%); largest change: adapt wait +5.6 ms per window"), four charts, every number with its change, and the settings
-that differ. Changes carry ▲, ▼ or ● as well as colour.
+**Compare.** *Did it get faster, by how much, where?* Two reports (any two in the results folder; with one, just that
+one) as one headline number, one row per metric (the bar is B, the tick is A, the shaded band is the noise floor,
+dashed when assumed), A over B bars of the decode window, and a chip per setting that differs. **Measure** runs
+Strata's profile and the new report appears in the pickers.
 
-**Tune.** One click: profile, Strata's calibration, load the model again with one short request, profile again,
-compare. Six stages with ticking times and the calibration's output; four dot charts show every candidate the
-calibration measured and which one it kept; the result card shows the speed, the first request after the tune and
-the settings before and after. **The model is unloaded for the whole calibration** (setup says 15–30 minutes) and
-Strata's requests get 503 meanwhile; the page asks you to confirm. A past-tunes list keeps the records.
-
-**Settings.** The speed settings with what each does, the value loaded now, the value the next load will use and the
-run config's value, from Strata's `/profile/settings` when it has it, otherwise from `/metrics`, otherwise from
-`--config`. The Studio shows them; it does not edit them.
+**Tune.** *Where is the tune, and what did it pick?* A four-step line (Measure, Tune, Load, Measure) with the time of
+each step, the candidates the calibration measured as four dot plots (grey dots are rounds, the black dot the
+median, the ring the value the tune kept, a dashed ring the sweep's best when it was not kept), and the comparison
+of the before and after profile opened right under it. **The model is unloaded for the whole calibration** (setup
+says 15-30 minutes) and Strata's requests get 503 meanwhile; the page asks you to confirm.
 
 ## How the comparison decides
 
