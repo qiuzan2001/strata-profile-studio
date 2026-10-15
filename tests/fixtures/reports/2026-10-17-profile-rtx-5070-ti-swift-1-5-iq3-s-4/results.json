@@ -1,0 +1,382 @@
+{
+ "schema": 1,
+ "tool": "tools/strata_profile.py",
+ "date": "2026-10-17",
+ "params": {
+  "long": 32768,
+  "verify_profile": false
+ },
+ "elapsed_s": 47.17797064781189,
+ "machine": {
+  "gpu": [
+   "NVIDIA GeForce RTX 5070 Ti"
+  ],
+  "gpu_vram_mib": 16303,
+  "cpu": "AMD Ryzen 7 5800X3D 8-Core Processor",
+  "ram_gib": 76.5,
+  "model": "swift-1.5-iq3_s",
+  "quant": "IQ3_S",
+  "context": 262144,
+  "strata_version": "0.1.44.1",
+  "engine_version": "0.1.44.1",
+  "config": {
+   "exe": "strata",
+   "args": [
+    "--pcie-frac",
+    "0.35",
+    "--spec-min-p",
+    "0.70",
+    "--adapt-every",
+    "1",
+    "--adapt-swaps",
+    "160",
+    "--adapt-decay",
+    "0.97",
+    "--kv-resident",
+    "32768",
+    "--max-context",
+    "262144",
+    "--expert-cache",
+    "auto",
+    "--spec",
+    "4"
+   ]
+  },
+  "engine_info": {
+   "model": "swift-1.5-iq3_s",
+   "context": 262144,
+   "max_context": 262144,
+   "version": "0.1.44.1",
+   "pcie_frac": "0.35",
+   "spec_min_p": "0.70",
+   "pool_workers": 7,
+   "kv_resident": 32768,
+   "expert_slots": 3827,
+   "expert_cache_mib": 7485
+  }
+ },
+ "results": {
+  "chat": {
+   "requests": [
+    {
+     "decode_tps": 91.0,
+     "engine": {
+      "hit": {
+       "hit_rate": 0.752
+      }
+     }
+    },
+    {
+     "decode_tps": 77.4,
+     "engine": {
+      "hit": {
+       "hit_rate": 0.794
+      }
+     }
+    },
+    {
+     "decode_tps": 80.2,
+     "engine": {
+      "hit": {
+       "hit_rate": 0.797
+      }
+     }
+    }
+   ]
+  },
+  "prompts": {
+   "2K": {
+    "prompt_tokens": 2023,
+    "prompt_tps": 1758.4,
+    "groups": {
+     "gpu_ms": 981.0,
+     "ms": {
+      "experts over PCIe": 201.0,
+      "dequant": 153.0,
+      "expert GEMM": 239.0,
+      "attention": 86.0,
+      "GDN": 214.0,
+      "other": 87.0
+     },
+     "share": {
+      "experts over PCIe": 0.20489296636085627,
+      "dequant": 0.1559633027522936,
+      "expert GEMM": 0.2436289500509684,
+      "attention": 0.08766564729867482,
+      "GDN": 0.218144750254842,
+      "other": 0.08868501529051988
+     }
+    }
+   },
+   "16K": {
+    "prompt_tokens": 16058,
+    "prompt_tps": 2943.6,
+    "groups": {
+     "gpu_ms": 5170.0,
+     "ms": {
+      "experts over PCIe": 275.0,
+      "dequant": 386.0,
+      "expert GEMM": 1537.0,
+      "attention": 933.0,
+      "GDN": 1320.0,
+      "other": 718.0
+     },
+     "share": {
+      "experts over PCIe": 0.05319148936170213,
+      "dequant": 0.0746615087040619,
+      "expert GEMM": 0.29729206963249516,
+      "attention": 0.1804642166344294,
+      "GDN": 0.2553191489361702,
+      "other": 0.13887814313346228
+     }
+    }
+   },
+   "32K (long)": {
+    "prompt_tokens": 32049,
+    "prompt_tps": 3012.0,
+    "groups": {
+     "gpu_ms": 10364.0,
+     "ms": {
+      "experts over PCIe": 588.0,
+      "dequant": 725.0,
+      "expert GEMM": 2785.0,
+      "attention": 2082.0,
+      "GDN": 2625.0,
+      "other": 1559.0
+     },
+     "share": {
+      "experts over PCIe": 0.0567348514087225,
+      "dequant": 0.06995368583558471,
+      "expert GEMM": 0.26871864145117713,
+      "attention": 0.20088768815129293,
+      "GDN": 0.2532805866460826,
+      "other": 0.1504245465071401
+     }
+    }
+   }
+  },
+  "decode": {
+   "chat": {
+    "context": 44,
+    "decode_tps": {
+     "median": 80.2,
+     "min": 77.4,
+     "max": 91.0,
+     "n": 3
+    },
+    "hit": {
+     "hit_rate": 0.794,
+     "pcie_share": 0.06
+    },
+    "groups": {
+     "ms_per_window": 29.102125,
+     "tokens_per_window": 2.3999375,
+     "ms": {
+      "GPU": 9.546375000000001,
+      "CPU experts": 14.341,
+      "draft": 1.8149374999999999,
+      "adapt wait": 2.5631250000000003,
+      "other": 0.8366875
+     },
+     "cpu_experts": 3.8713750000000005,
+     "cpu_entries": 5.108125
+    }
+   },
+   "long context": {
+    "context": 32049,
+    "decode_tps": {
+     "median": 99.5,
+     "min": 99.5,
+     "max": 99.5,
+     "n": 1
+    },
+    "hit": {
+     "hit_rate": 0.874,
+     "pcie_share": 0.035
+    },
+    "groups": {
+     "ms_per_window": 23.4,
+     "tokens_per_window": 2.33,
+     "ms": {
+      "GPU": 10.26,
+      "CPU experts": 9.01,
+      "draft": 2.3,
+      "adapt wait": 1.01,
+      "other": 0.8199999999999992
+     },
+     "cpu_experts": 2.55,
+     "cpu_entries": 3.13
+    }
+   },
+   "agent turns": {
+    "context": 8732,
+    "decode_tps": {
+     "median": 79.2,
+     "min": 76.0,
+     "max": 116.7,
+     "n": 5
+    },
+    "hit": {
+     "hit_rate": 0.82,
+     "pcie_share": 0.058
+    },
+    "groups": {
+     "ms_per_window": 29.710430107526882,
+     "tokens_per_window": 2.4840860215053766,
+     "ms": {
+      "GPU": 10.046021505376345,
+      "CPU experts": 14.62440860215054,
+      "draft": 1.9472043010752689,
+      "adapt wait": 2.2250537634408603,
+      "other": 0.8677419354838682
+     },
+     "cpu_experts": 3.9545161290322577,
+     "cpu_entries": 5.418494623655914
+    }
+   }
+  },
+  "agent": {
+   "turns": [
+    {
+     "turn": 0,
+     "prompt_tokens": 609,
+     "reused_tokens": 0,
+     "read_tokens": 609,
+     "prompt_tps": 482.1,
+     "decode_tps": 54.6,
+     "hit": {
+      "hit_rate": 0.645
+     },
+     "groups": {
+      "ms_per_window": 39.93,
+      "ms": {
+       "GPU": 10.15,
+       "CPU experts": 22.49,
+       "draft": 1.88,
+       "adapt wait": 4.43,
+       "other": 0.9800000000000031
+      }
+     }
+    },
+    {
+     "turn": 1,
+     "prompt_tokens": 3755,
+     "reused_tokens": 633,
+     "read_tokens": 3122,
+     "prompt_tps": 1438.9,
+     "decode_tps": 76.0,
+     "hit": {
+      "hit_rate": 0.666
+     },
+     "groups": {
+      "ms_per_window": 36.6,
+      "ms": {
+       "GPU": 9.89,
+       "CPU experts": 20.78,
+       "draft": 1.99,
+       "adapt wait": 3.1,
+       "other": 0.8399999999999994
+      }
+     }
+    },
+    {
+     "turn": 2,
+     "prompt_tokens": 5288,
+     "reused_tokens": 3818,
+     "read_tokens": 1470,
+     "prompt_tps": 1012.0,
+     "decode_tps": 77.8,
+     "hit": {
+      "hit_rate": 0.793
+     },
+     "groups": {
+      "ms_per_window": 29.38,
+      "ms": {
+       "GPU": 9.82,
+       "CPU experts": 14.56,
+       "draft": 1.85,
+       "adapt wait": 2.28,
+       "other": 0.8699999999999983
+      }
+     }
+    },
+    {
+     "turn": 3,
+     "prompt_tokens": 8732,
+     "reused_tokens": 5351,
+     "read_tokens": 3381,
+     "prompt_tps": 1562.7,
+     "decode_tps": 94.3,
+     "hit": {
+      "hit_rate": 0.849
+     },
+     "groups": {
+      "ms_per_window": 25.15,
+      "ms": {
+       "GPU": 10.08,
+       "CPU experts": 10.46,
+       "draft": 2.04,
+       "adapt wait": 1.71,
+       "other": 0.8599999999999977
+      }
+     }
+    },
+    {
+     "turn": 4,
+     "prompt_tokens": 11658,
+     "reused_tokens": 8795,
+     "read_tokens": 2863,
+     "prompt_tps": 1395.1,
+     "decode_tps": 116.7,
+     "hit": {
+      "hit_rate": 0.871
+     },
+     "groups": {
+      "ms_per_window": 25.71,
+      "ms": {
+       "GPU": 10.7,
+       "CPU experts": 10.75,
+       "draft": 1.86,
+       "adapt wait": 1.48,
+       "other": 0.9200000000000013
+      }
+     }
+    },
+    {
+     "turn": 5,
+     "prompt_tokens": 14574,
+     "reused_tokens": 11675,
+     "read_tokens": 2899,
+     "prompt_tps": 1432.8,
+     "decode_tps": 79.2,
+     "hit": {
+      "hit_rate": 0.82
+     },
+     "groups": {
+      "ms_per_window": 29.48,
+      "ms": {
+       "GPU": 10.61,
+       "CPU experts": 14.17,
+       "draft": 1.92,
+       "adapt wait": 1.86,
+       "other": 0.920000000000001
+      }
+     }
+    }
+   ]
+  },
+  "skipped": {},
+  "failures": [],
+  "findings": [
+   "The 2K read (2,023 tokens, 1,758 tok/s) is compute-bound: expert GEMM 24%, attention 9%, GDN 22% of its GPU time; the experts' copies and dequant 36%.",
+   "The 16K read (16,058 tokens, 2,944 tok/s) is compute-bound: expert GEMM 30%, attention 18%, GDN 26% of its GPU time; the experts' copies and dequant 13%.",
+   "The 32K (long) read (32,049 tokens, 3,012 tok/s) is compute-bound: expert GEMM 27%, attention 20%, GDN 25% of its GPU time; the experts' copies and dequant 13%.",
+   "chat (44 tokens of context, 80 tok/s, expert cache hit rate 79%): of a 29.1 ms window the card takes 9.5 ms and the experts computed on the CPU 14.3 ms (3.9 experts, 5.1 entries per layer-window): the misses of the VRAM expert cache take the larger share of the window.",
+   "long context (32,049 tokens of context, 100 tok/s, expert cache hit rate 87%): of a 23.4 ms window the card takes 10.3 ms, the experts computed on the CPU 9.0 ms, the draft 2.3 ms: the card takes the larger share of the window.",
+   "agent turns (8,732 tokens of context, 79 tok/s, expert cache hit rate 82%): of a 29.7 ms window the card takes 10.0 ms and the experts computed on the CPU 14.6 ms (4.0 experts, 5.4 entries per layer-window): the misses of the VRAM expert cache take the larger share of the window.",
+   "Agent turns: the expert cache hit rate per turn runs from 64% (turn 0) to 87% (turn 4).",
+   "Agent turns: each follow-up turn read 1,470-3,381 tokens after what the conversation cache reused.",
+   "A decode whose larger share is the experts computed on the CPU follows the expert cache's hit rate: the settings on that path are the cache's slots (VRAM: --max-context, --kv-resident, --vram-reserve-mib; docs/DETAILS.md, \"The expert cache size is a budget\"), the PCIe share and the adaptive tier (setup --calibrate measures both on this PC) and a saved expert profile (expert_profile_save)."
+  ]
+ }
+}

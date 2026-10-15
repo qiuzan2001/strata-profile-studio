@@ -22,7 +22,8 @@ from .strata import StrataError
 
 MAX_POST = 64 * 1024
 STATIC = {"app.js": "text/javascript; charset=utf-8", "charts.js": "text/javascript; charset=utf-8",
-          "style.css": "text/css; charset=utf-8", "favicon.svg": "image/svg+xml",
+          "insights.js": "text/javascript; charset=utf-8", "style.css": "text/css; charset=utf-8",
+          "favicon.svg": "image/svg+xml",
           "vendor/chart-4.4.1.umd.js": "text/javascript; charset=utf-8"}
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "
        "frame-ancestors 'none'; base-uri 'none'")
@@ -38,7 +39,7 @@ class StudioApp:
     """What the handlers share."""
 
     def __init__(self, *, strata_url, results_dir, config_path, key, studio_key, host, port, client, poller,
-                 flow, reports, state, web_dir, started_at):
+                 flow, reports, state, web_dir, started_at, allow_hosts=()):
         self.strata_url, self.results_dir, self.config_path = strata_url, results_dir, config_path
         self.key_set = bool(key)
         self.studio_key = studio_key                   # None: no bearer needed on /api/
@@ -46,6 +47,30 @@ class StudioApp:
         self.client, self.poller, self.flow, self.reports, self.state = client, poller, flow, reports, state
         self.web_dir = Path(web_dir)
         self.started_at = started_at
+        self.allow_hosts = [h.strip().lower() for h in allow_hosts if h and h.strip()]
+
+    @staticmethod
+    def split_host(header: str) -> tuple[str, str | None]:
+        """"name:8444" -> ("name", "8444"); "[::1]:8090" -> ("[::1]", "8090"); "name" -> ("name", None)."""
+        header = header.strip().lower()
+        if header.startswith("["):
+            name, _, rest = header.partition("]")
+            return name + "]", (rest[1:] if rest.startswith(":") else None)
+        name, sep, port = header.partition(":")
+        return name, (port if sep else None)
+
+    def proxy_host(self, header: str) -> bool:
+        """The Host header names one of the --allow-host entries (an entry without a port allows any port)."""
+        name, port = self.split_host(header)
+        for entry in self.allow_hosts:
+            ename, eport = self.split_host(entry)
+            if ename == name and (eport is None or eport == port):
+                return True
+        return False
+
+    def host_ok(self, header: str) -> bool:
+        header = (header or "").strip().lower()
+        return header in self.allowed_hosts() or self.proxy_host(header)
 
     def allowed_hosts(self) -> set[str]:
         p = self.port
@@ -135,8 +160,7 @@ def make_handler(app: StudioApp):
 
         # ---------------------------------------------------------------------------- the checks
         def _host_ok(self) -> bool:
-            host = (self.headers.get("Host") or "").strip().lower()
-            if host in app.allowed_hosts():
+            if app.host_ok(self.headers.get("Host") or ""):
                 return True
             self._error(403, "This address is not one the Studio answers to (Host header check).")
             return False
@@ -145,7 +169,12 @@ def make_handler(app: StudioApp):
             origin = (self.headers.get("Origin") or "").strip()
             if not origin:
                 return True
-            if origin.rstrip("/").lower() == f"http://{(self.headers.get('Host') or '').lower()}":
+            host = (self.headers.get("Host") or "").strip().lower()
+            origin = origin.rstrip("/").lower()
+            if origin == f"http://{host}":
+                return True
+            # a proxy that terminates TLS (tailscale serve): the page's origin is https://<the proxy's name>
+            if origin == f"https://{host}" and app.proxy_host(host):
                 return True
             self._error(403, "A page from another origin may not use the Studio.")
             return False
@@ -277,7 +306,7 @@ def make_handler(app: StudioApp):
                 ra, rb = app.reports.get(a), app.reports.get(b)
             except ReportError as e:
                 return self._error(404, str(e))
-            self._json(200, compare_mod.compute(ra, rb))
+            self._json(200, compare_mod.compute(ra, rb, app.reports.pool()))
 
         # ----------------------------------------------------------------------------- POST /api
         @staticmethod

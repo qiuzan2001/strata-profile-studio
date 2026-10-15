@@ -83,7 +83,7 @@ class Normalised(unittest.TestCase):
         self.assertEqual(r["machine"]["gpu"], "NVIDIA GeForce RTX 5070 Ti")
         self.assertEqual(r["params"]["long"], 32768)
         self.assertEqual(len(r["findings"]), 10)
-        self.assertEqual(r["noise"], {"chat_tps_spread": 0.0462, "chat_hit_range": 0.069})
+        self.assertNotIn("noise", r)                      # the chats are three different prompts: no noise measure
         self.assertEqual([c["decode_tps"] for c in r["chat_runs"]], [76.8, 75.7, 73.3])
 
     def test_settings_rows_from_config_args_and_engine_info(self):
@@ -151,7 +151,6 @@ class Normalised(unittest.TestCase):
         rep = store(d).get("2026-10-15-profile-empty")
         self.assertEqual((rep["prompts"], rep["decode"], rep["agent"]), ([], [], []))
         self.assertIsNone(rep["machine"]["gpu"])
-        self.assertEqual(rep["noise"], {"chat_tps_spread": None, "chat_hit_range": None})
 
     def test_oversize_results_is_not_ok(self):
         d = support.tmpdir(self)
@@ -160,6 +159,15 @@ class Normalised(unittest.TestCase):
         with open(f, "wb") as fh:
             fh.write(b'{"x": "' + b"a" * (reports.MAX_RESULTS_BYTES + 10) + b'"}')
         self.assertFalse(store(d).scan()["reports"][0]["ok"])
+
+    def test_pool_lists_every_ok_report_with_its_chips_and_order(self):
+        d = support.tmpdir(self)
+        support.copy_fixtures(d, (support.A, support.B, support.BROKEN))
+        pool = store(d).pool()
+        self.assertEqual([e["id"] for e in pool], [support.B, support.A])
+        self.assertEqual(pool[0]["short"]["pcie_frac"], "0.35")
+        self.assertEqual(pool[0]["order"][:4], [2026, 10, 15, 2])
+        self.assertEqual(pool[1]["rep"]["id"], support.A)
 
     def test_cache_follows_the_file(self):
         d = support.tmpdir(self)

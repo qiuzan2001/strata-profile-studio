@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import statistics
 import threading
 from pathlib import Path
 
@@ -103,9 +102,12 @@ def settings_rows(machine: dict) -> list[dict] | None:
     return rows
 
 
-def settings_short(rows, has_args: bool) -> dict:
-    """Four chips: PCIe share, draft floor, workers, and the expert tier ("engine default" or every/swaps/decay)."""
+def settings_short(rows, has_args: bool | None = None) -> dict:
+    """Four chips: PCIe share, draft floor, workers, and the expert tier ("engine default" or every/swaps/decay).
+    `has_args`: whether the run config's arguments are known (default: when any row has a config value)."""
     by = {r["flag"]: r for r in rows or []}
+    if has_args is None:
+        has_args = any(r.get("config") is not None for r in rows or [])
 
     def shown(flag):
         r = by.get(flag) or {}
@@ -126,20 +128,6 @@ def chat_runs(results: dict) -> list[dict]:
         r = _dict(r)
         out.append({"decode_tps": _num(r.get("decode_tps")), "hit_rate": _num(_get(r, "engine", "hit", "hit_rate"))})
     return out
-
-
-def noise_of(results: dict, runs: list[dict]) -> dict:
-    """The run-to-run noise from the repeated chat questions: the tok/s spread over the median, and the range of
-    the hit rate in points (as a fraction).  None for fewer than two runs."""
-    tps = [r["decode_tps"] for r in runs if r["decode_tps"] is not None]
-    spread = None
-    if len(tps) >= 2:
-        med = _num(_get(results, "decode", "chat", "decode_tps", "median")) or statistics.median(tps)
-        if med:
-            spread = round((max(tps) - min(tps)) / med, 4)
-    hits = [r["hit_rate"] for r in runs if r["hit_rate"] is not None]
-    hit_range = round(max(hits) - min(hits), 4) if len(hits) >= 2 else None
-    return {"chat_tps_spread": spread, "chat_hit_range": hit_range}
 
 
 def machine_gpu(machine: dict):
@@ -201,7 +189,7 @@ def normalise(raw, report_id: str, path: str, meta: dict | None = None) -> dict:
             "params": {"long": _num(params.get("long")), "verify_profile": params.get("verify_profile")},
             "elapsed_s": _num(raw.get("elapsed_s")),
             "settings": {"source": source, "rows": rows},
-            "prompts": prompts, "decode": decode, "agent": agent, "chat_runs": runs, "noise": noise_of(results, runs),
+            "prompts": prompts, "decode": decode, "agent": agent, "chat_runs": runs,
             "findings": [str(f) for f in _list(results.get("findings"))],
             "skipped": _dict(results.get("skipped")),
             "failures": [f if isinstance(f, (str, dict)) else str(f) for f in _list(results.get("failures"))],
@@ -287,8 +275,7 @@ class ReportStore:
                     raw = json.loads(fh.read(MAX_RESULTS_BYTES + 1).decode("utf-8-sig"))
                 if isinstance(raw, dict):
                     rep = normalise(raw, report_id, str(folder))
-                    has_cfg = isinstance(_get(raw, "machine", "config"), dict)
-                    short = settings_short(rep["settings"]["rows"], has_cfg)
+                    short = settings_short(rep["settings"]["rows"])
             except (OSError, ValueError):
                 rep = None
         with self._lock:
@@ -372,6 +359,24 @@ class ReportStore:
         rep["note"] = self.ctx.note(report_id)
         rep["tune"] = self.ctx.tune_role(report_id)
         return rep
+
+    def pool(self) -> list[dict]:
+        """Every ok report in the folder as {"id", "rep", "short", "order"}: what the comparison measures its noise
+        floor from."""
+        out = []
+        for r in self.scan()["reports"]:
+            if not r["ok"]:
+                continue
+            folder = self.folder(r["id"])
+            f, st = self._results_file(folder) if folder else (None, None)
+            if f is None:
+                continue
+            rep, short = self._load(r["id"], folder, f, st)
+            if rep is None:
+                continue
+            rep, short = self._with_meta(rep, short)
+            out.append({"id": r["id"], "rep": rep, "short": short, "order": r["order"]})
+        return out
 
     def ok_ids(self) -> list[str]:
         return [r["id"] for r in self.scan()["reports"] if r["ok"]]
