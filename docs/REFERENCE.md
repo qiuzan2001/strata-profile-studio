@@ -50,6 +50,9 @@ The page and this file use these terms, and only these terms, for these things.
 | `--host-probe` | | Print each host reader of this PC (its source, whether it answers, the first raw line) and stop. See [Report your PC](../README.md#report-your-pc). |
 | `--read-only` | off | The Studio starts no profile run and no tune, and writes no file. Every POST answers 403. Use it to show the Studio to other persons. |
 | `--state PATH` | `studio-state.json` next to `studio.py` | The Studio's own file (tune records, notes). |
+| `--card REPORT` | | Write the result card of one profile report (its folder, or its `results.json`). The files are `card.html`, `card.svg` and `card.json`. With a headless Chrome, Chromium or Edge, or Pillow, on the PC, also `card.png`. Then stop. The Studio sends nothing. The card has no prompts, host names, user names, paths, keys, run config or start command. The schema is `cards/schema/strata-card-1.schema.json`. |
+| `--out DIR` | `strata-card-<id>` | With `--card`: the folder for the card files. |
+| `--name NAME` | none | With `--card`: an optional name on the card, at most 12 characters (letters, digits, space, `-` and `_`). |
 | `--demo` | off | Try the Studio without Strata: a demo Strata with the recorded data of one PC (`tests/fixtures/demo`) and the Studio against it, in one process. All files go to a temporary folder. Ctrl-C stops both. |
 | `--version` | | Print the version. |
 

@@ -22,7 +22,7 @@ plain words. Ask the user only where a step says so.
 - **Never print the API key.** Strata's run config can have an `"api_key"`. Read it into an environment variable
   only.
 - **Keep notes of each problem.** When a check fails, or a command gives an error, write down the step and the
-  exact error text. Also write down what you did to get past it. Step 12 uses these notes.
+  exact error text. Also write down what you did to get past it. Step 13 uses these notes.
 
 ## 1. Find the Strata install
 
@@ -107,7 +107,7 @@ python3 --version          (Windows: py -3 --version)
    (Linux, macOS) or `<Strata folder>\.venv\Scripts\python.exe` (Windows).
 
 Run `--version` on each. Use the first one with 3.11 or newer as `python3` in the steps below, and write a note
-(step 12). When none is 3.11 or newer, ask the user before you install a newer Python.
+(step 13). When none is 3.11 or newer, ask the user before you install a newer Python.
 
 ## 6. Get the Studio
 
@@ -210,7 +210,30 @@ Tell the user, in plain words:
 - How to stop the Studio: stop the `python3 studio.py` process (Linux, macOS: `kill <pid>`). Closing the browser
   does not stop it.
 
-## 12. Report what you found
+## 12. Make a card for the user
+
+Make the result card of the newest profile report, so that the user sees what a card has. Send it nowhere in this
+step.
+
+```
+python3 studio.py --card "<Strata folder>/bench/results/<newest report folder>" --config "<config>" --out strata-card
+```
+
+The newest report folder is the last `<date>-profile-...` folder in `bench/results` by name. When there is no
+report yet, skip this step: the user can make one with **Run a profile** on the Runs page, then select **Share**.
+
+**Check:** the command prints `Card <id> in strata-card: card.html, card.svg, card.json` and, when the PC has a
+headless Chrome, Chromium or Edge, or Pillow, also `card.png`.
+
+**Then:** show the user `strata-card/card.png` (else `card.svg`), and tell them what is not in the card. The command
+prints the list. There are no prompts or answers, no host names, Tailscale names or IP addresses, and no user names
+or paths. There are also no keys, no run config file, no start command of the engine and no serial numbers. Tell the user that the card stays
+on this PC. The **Share** button on a run in the Studio shows the same card and its JSON.
+
+**When the check fails:** `No card: ...` names the reason (for example, a folder without `results.json`). Tell the
+user, and go on with step 13.
+
+## 13. Report what you found
 
 Do this step at the end of each install. It has two cases. When neither case applies, this step ends the install.
 
@@ -330,7 +353,7 @@ The trial with a fault used the same test setup, with two changes:
 - **The fault.** A `python3` first in the agent's `PATH` said `Python 3.9.18` and failed on `studio.py`.
 - **A test `gh`.** It was not logged in and wrote each call to a log. The only call was `gh auth status`.
 
-The agent noted the fault in step 5 and used `/usr/bin/python3.14`. In step 12 it wrote `install-report.md`. The
+The agent noted the fault in step 5 and used `/usr/bin/python3.14`. In step 12 (now step 13) it wrote `install-report.md`. The
 report had the OS, Python, Strata version, GPU and the name of the run config. It also had the host probe and two
 problems with their fixes. The problems were the old Python, and port 8090, which the test kept for other programs. The report had `~` for the home folder and no user name, host name or key. The agent asked "May I open an
 issue on GitHub with this report?" one time. The answer "No." ended the install, and the report stayed unchanged.

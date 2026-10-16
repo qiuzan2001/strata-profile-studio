@@ -44,7 +44,7 @@ Copy this sentence into Claude Code, Codex or another coding agent on the PC whe
 Install Strata Profile Studio on this computer and open it in my browser: https://github.com/qiuzan2001/strata-profile-studio (follow docs/AI_SETUP.md)
 ```
 
-When the install needs a fix, the agent shows you a report and asks whether to open an issue with it, so the next
+When the install needs a fix, the agent shows you a report and asks whether to open an issue with it. Then the next
 person does not hit the same thing.
 
 Tried with Claude Code 2.1.301 (`claude -p`) against a test copy of Strata. It installed and started the Studio
@@ -222,6 +222,25 @@ For each reader (CPU, clock, temperature, power, memory, disk, GPU tool, engine 
 the source, and the first raw line. It starts each tool one time and stops. It does not connect to Strata. The
 output has file paths: remove your user name from them if you want. A report can change "from the documentation" to
 "on hardware" in the table above.
+
+## Share a card
+
+![The Share dialog of a run](docs/screenshots/share.png)
+
+A result card is one profile run of one PC. It has the decode and prompt read speeds with the noise floor of the PC,
+and the PC in one row with the limiting component. It also has the decode window split and the settings that differ
+from the engine defaults. It comes as `card.html`, a 1200 x 630 image and `card.json`.
+
+- **In the Studio:** select **Share** on a run (on Runs, or in the run detail). The dialog shows the card and its
+  whole JSON first, with the list of what is not in them. Then **Write the files** puts them on this PC.
+- **In a terminal:** `python3 studio.py --card <report folder> [--out DIR] [--name NAME]`.
+- **What a card does not have:** prompts or answers, host names, Tailscale names or IP addresses, user names or
+  paths. Also no keys, no run config file, no start command of the engine and no serial numbers.
+- **Where the card goes:** in this version, nowhere. The files stay on this PC. A public site for cards
+  (`qiuzan2001/strata-cards`) comes later. The two destinations that send a card stay off until it is up.
+
+The PNG needs a headless Chrome, Chromium or Edge, or the Python package Pillow, on the PC. Without either, the card
+image is the SVG.
 
 ## Tried with
 

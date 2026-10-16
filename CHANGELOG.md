@@ -2,6 +2,19 @@
 
 One PC measured the numbers below: RTX 5070 Ti 16 GB, Ryzen 7 5800X3D, Swift 1.5 IQ3_S, 2026-10-15.
 
+## Unreleased
+
+- **Result cards:** `studio.py --card <report>` writes the card of one profile run as `card.html`, `card.svg`,
+  `card.json` and `card.png` (the PNG with a headless browser, else Pillow). Schema `strata-card/1` and a
+  standard-library validator are in `cards/`.
+- **The Share dialog** on Runs and in the run detail shows the card and its JSON first. Only "the files on this PC"
+  works. The two destinations that send a card stay off until the cards site is up. `--read-only` hides it.
+- **The cards site** (`cards/site/`): the site builder, the issue forms, the workflow for GitHub Pages and the nine
+  seed cards. They are ready to copy into the repository `qiuzan2001/strata-cards`.
+- **Wording:** the comparison verdicts and the server's messages are sentences, without semicolons.
+- A test checks the nine real reports of 2026-10-15: no host name, user name, path, key, start command or prompt
+  text reaches a card.
+
 ## 0.1.0 (2026-10-15)
 
 The first release. It has the five rounds below. It also has three items for people without Strata.

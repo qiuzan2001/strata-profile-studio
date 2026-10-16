@@ -190,6 +190,28 @@ def demo_check(browser, out):
             seen.add(page.evaluate("document.querySelector('.blk-cpu .blk-big').textContent"))
             time.sleep(1)
         record("demo now: the PC module moves", len(seen) > 1, f"CPU readings seen: {sorted(seen)}")
+        # the Share dialog of a run: the card and its JSON first, then only the files on this PC
+        rid = [r for r in get(f"{base}/api/reports")["reports"] if r["ok"]][0]["id"]
+        page.goto(f"{base}/#runs/{rid}")
+        time.sleep(2.5)
+        page.locator(".view-head button.btn", has_text="Share").click()
+        def until(js, secs):                              # page.evaluate: the page's CSP forbids wait_for_function
+            end = time.time() + secs
+            while time.time() < end:
+                if page.evaluate(js):
+                    return True
+                time.sleep(0.25)
+            return False
+        shown = until("(document.querySelector('dialog .share-json') || {}).textContent.includes('strata-card/1') && "
+                      "document.querySelector('dialog .share-img').naturalWidth === 1200", 40)
+        record("share: the dialog shows the card image and the JSON", shown)
+        dis = page.evaluate("[...document.querySelectorAll('dialog input[name=share-dest]')].map(r => r.value + ':' + r.disabled).join(',')")
+        record("share: only the files on this PC can be chosen", dis == "gh:true,form:true,files:false", dis)
+        page.locator("dialog button.primary", has_text="Write the files").click()
+        until("document.querySelector('.share-result').textContent.includes('Nothing left the PC')", 60)
+        page.screenshot(path=str(out / "demo-share-light.png"))
+        record("share: the card files are written on this PC", "card.json" in page.locator(".share-result").inner_text())
+        page.keyboard.press("Escape")
         record("demo: no script error", not errs, "; ".join(errs[:3]))
         ctx.close()
     finally:
@@ -389,6 +411,11 @@ def main():
                           "read-only": "read-only", "host-off": "Host readings are off"}[name]
                 if name == "read-only":
                     text += page.evaluate("document.querySelector('header').innerText")
+                    page.goto(f"{sc.base}/#runs")
+                    time.sleep(2.5)
+                    record("read-only: no Share button", page.locator("button.btn", has_text="Share").count() == 0)
+                    page.goto(f"{sc.base}/#now")
+                    time.sleep(1)
                 record(f"state {name}: says so on the page", expect.lower() in text.lower(), expect)
                 if name == "host-off":
                     host = get(f"{sc.base}/api/host")
