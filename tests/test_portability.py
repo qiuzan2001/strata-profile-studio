@@ -270,6 +270,21 @@ class StrataLayout(unittest.TestCase):
         self.assertEqual(defaultsrun.strata_python(d, "linux"), d / ".venv" / "bin" / "python")
 
 
+class FromConfig(unittest.TestCase):
+    def test_address_and_results_from_the_run_config(self):        # `studio.py --config X` alone
+        import studio
+        d = tmpdir(self)
+        (d / "tools").mkdir()
+        (d / "tools" / "strata_profile.py").write_text("")
+        (d / "bench" / "results").mkdir(parents=True)
+        cfg = d / "strata-swift-iq3_s.json"
+        cfg.write_text(json.dumps({"exe": str(d / "engine" / "strata"), "port": 8085, "host": "0.0.0.0"}))
+        self.assertEqual(studio.from_config(str(cfg)), {"strata": "http://127.0.0.1:8085", "results": str(d / "bench" / "results")})
+        cfg.write_text(json.dumps({"args": []}))                      # no port: the defaults apply
+        self.assertEqual(studio.from_config(str(cfg)), {"results": str(d / "bench" / "results")})
+        self.assertEqual(studio.from_config(None), {})
+        self.assertEqual(studio.from_config(str(d / "missing.json")), {})
+
 class WindowsConfig(unittest.TestCase):
     def test_a_crlf_config_with_a_bom_keeps_both(self):                 # setup.py on Windows; Notepad adds the BOM
         d = tmpdir(self)

@@ -32,6 +32,29 @@ from studiolib.strata import StrataClient                                  # noq
 from studiolib.timing import Timing                                        # noqa: E402
 
 DEFAULT_RESULTS = "~/Strata/bench/results"
+DEFAULT_STRATA = "http://127.0.0.1:8080"
+
+
+def from_config(config: str | None) -> dict:
+    """What the run config tells: Strata's address (its "port", and "host" unless it listens on every address) and
+    the results folder (bench/results in the Strata checkout).  Empty for each value it does not tell."""
+    out = {}
+    if not config:
+        return out
+    from studiolib.defaultsrun import strata_root
+    from studiolib.settings import read_config
+    cfg, _ = read_config(config)
+    if not cfg:
+        return out
+    port = cfg.get("port")
+    if isinstance(port, int) and 0 < port < 65536:
+        host = cfg.get("host") if isinstance(cfg.get("host"), str) else "127.0.0.1"
+        host = "127.0.0.1" if host in ("", "0.0.0.0", "::", "localhost") else host
+        out["strata"] = f"http://{'[' + host + ']' if ':' in host else host}:{port}"
+    root = strata_root(cfg, config) or Path(config).resolve().parent
+    if (root / "bench" / "results").is_dir():
+        out["results"] = str(root / "bench" / "results")
+    return out
 
 
 def public_url(url: str) -> str:
@@ -139,9 +162,11 @@ def parse_args(argv=None):
     ap = argparse.ArgumentParser(
         prog="studio.py", description="Strata Profile Studio: profile, tune and compare Strata on this PC.",
         epilog="The API key can also be given as STRATA_KEY in the environment, which keeps it out of `ps`.")
-    ap.add_argument("--strata", default="http://127.0.0.1:8080", help="Strata's address (default %(default)s)")
-    ap.add_argument("--results", default=DEFAULT_RESULTS,
-                    help="Strata's bench/results folder, where profile reports are read from (default %(default)s)")
+    ap.add_argument("--strata", default=None,
+                    help=f"Strata's address (default: the config's \"port\", else {DEFAULT_STRATA})")
+    ap.add_argument("--results", default=None,
+                    help="Strata's bench/results folder, where profile reports are read from (default: bench/results "
+                         f"of the Strata folder of --config, else {DEFAULT_RESULTS})")
     ap.add_argument("--key", default=None, help="Strata's API key (default: $STRATA_KEY)")
     ap.add_argument("--port", type=int, default=8090, help="the Studio's port (default %(default)s)")
     ap.add_argument("--host", default="127.0.0.1",
@@ -150,7 +175,8 @@ def parse_args(argv=None):
                     help="also answer to this Host name (repeatable), for a reverse proxy such as tailscale serve; "
                          "the Studio still listens on --host only")
     ap.add_argument("--config", default=None,
-                    help="Strata's strata-<model>.json, read only: the Settings view shows its values")
+                    help="Strata's strata-<model>.json in the Strata folder. The Studio finds Strata's address, the "
+                         "results folder and the engine log from it. Written only from the Settings page, with a .bak")
     ap.add_argument("--read-only", action="store_true",
                     help="look only: no profile run, no tune, no config write (every POST answers 403)")
     ap.add_argument("--host-info", choices=("on", "off"), default="on",
@@ -173,6 +199,9 @@ def main(argv=None) -> int:
         mon = HostMonitor(enabled=True)
         print(probe_text(mon, EngineLog(a.engine_log or default_engine_log(a.config))), flush=True)
         return 0
+    found = from_config(a.config)
+    a.strata = a.strata or found.get("strata") or DEFAULT_STRATA
+    a.results = a.results or found.get("results") or DEFAULT_RESULTS
     key = a.key or os.environ.get("STRATA_KEY") or None
     studio = Studio(a.strata, a.results, key=key, host=a.host, port=a.port, config=a.config, state_path=a.state,
                     allow_hosts=a.allow_host, engine_log=a.engine_log, read_only=a.read_only,

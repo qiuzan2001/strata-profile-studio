@@ -1,3 +1,16 @@
-studio-state.json*
+# Python
 __pycache__/
 *.pyc
+
+# The Studio's own files (state, its log, the host probe of docs/AI_SETUP.md)
+studio-state.json*
+studio.log
+studio.err
+host-probe.txt
+
+# Backups that a config write leaves
+*.bak
+
+# Page-check and demo temp folders, when made inside the repository
+pagecheck-*/
+demo-results/
