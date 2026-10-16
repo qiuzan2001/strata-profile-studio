@@ -55,10 +55,19 @@ def strata_root(cfg: dict, config_path) -> Path | None:
             cands.append(Path(*PureWindowsPath(exe).parent.parent.parts[1:]))
         else:
             cands.append(Path(os.path.expanduser(exe)).resolve().parent.parent)
-    for c in cands:
-        if (c / "tools" / "strata_profile.py").is_file():
+    for c in cands:                                    # with the profile tool (Strata PR #2660), or a release build
+        if (c / "tools" / "strata_profile.py").is_file() or (c / "tools" / "strata_bench.py").is_file():
             return c
     return None
+
+
+def profile_tool(root: Path) -> tuple[Path, dict]:
+    """Strata's own tools/strata_profile.py, else the Studio's copy (studiolib/vendor) with STRATA_ROOT set, for a
+    release build that has no profile tool (Strata 0.1.44.1)."""
+    own = root / "tools" / "strata_profile.py"
+    if own.is_file():
+        return own, {}
+    return Path(__file__).resolve().parent / "vendor" / "strata_profile.py", {"STRATA_ROOT": str(root)}
 
 
 def strata_python(root: Path, platform=None) -> Path | None:
@@ -109,7 +118,7 @@ class DefaultsRun:
             raise ValueError(err or "The Studio needs --config to know the run config.")
         root = strata_root(cfg, self.config_path) if self.tool is None else Path(".")
         if root is None:
-            raise ValueError("The Strata checkout (tools/strata_profile.py) is not next to the run config.")
+            raise ValueError("The Strata checkout (tools/strata_bench.py) is not next to the run config.")
         if not self.results_dir.is_dir():
             raise ValueError(f"The results folder {self.results_dir} does not exist.")
         return cfg, root
@@ -149,13 +158,15 @@ class DefaultsRun:
                     self._end("failed", f"Strata did not answer the unload ({type(e).__name__}).")
                     return
             before = {p.name for p in self.results_dir.iterdir()}
+            tool_env = {}
             if self.tool is not None:
                 cmd = list(self.tool) + ["--config", str(tmp), "--out", str(self.results_dir)]
             else:
                 py = strata_python(root) or Path(sys.executable)
-                cmd = [str(py), str(root / "tools" / "strata_profile.py"), "--config", str(tmp),
+                tool, tool_env = profile_tool(root)
+                cmd = [str(py), str(tool), "--config", str(tmp),
                        "--port", str(free_port()), "--out", str(self.results_dir)]
-            env = dict(os.environ)
+            env = dict(os.environ, **tool_env)
             if self.key:
                 env["STRATA_KEY"] = self.key
             self._say("Starting: " + " ".join(cmd[1:3]) + " ... (loading the model takes 1-3 minutes)")

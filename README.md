@@ -23,6 +23,24 @@ It also shows whether a change of settings made Strata faster, against the noise
 same PC and Python 3.11 or newer. It uses no GPU of its own, and it writes only Strata's run config (after a dialog,
 with a `.bak` copy) and its own state file.
 
+## Which Strata
+
+- **Strata 0.1.44.1 as released (stock mode).** The Studio works with it. This build has no profile routes, so the
+  Studio does that work itself. The Studio finds this out from Strata's answers. It needs no flag.
+  - **Without anything more:** Now shows the speeds of each request from `/metrics`, and the PC module. Runs,
+    Compare and Settings work.
+  - **With the engine log:** the time per component of each request comes from the engine's timing lines. The
+    components are the GPU, the CPU experts, the draft and PCIe. The engine writes them when the run config's `"env"` has
+    `"STRATA_PREFILL_TIMING": "1"` and `"STRATA_DECODE_TIMING": "1"`. The **Timing lines** block on the Settings
+    page adds the two switches (the other keys of `"env"` stay) and tells you to restart Strata. The Studio must be
+    able to read the log (`"log"` in the run config). A Strata in another container or on another PC: speeds only.
+  - **Run a profile** runs the Studio's copy of Strata's profile tool against the running server, with Strata's
+    `tools/` from the Strata folder (or `--strata-root DIR`).
+  - **Tune this PC** unloads the model through Strata's `/unload`, runs setup's calibration for the run config, and
+    then asks you to restart Strata. A release server reads its run config only at start.
+- **Strata with PRs #2660 and #2661** (the profile tool and the `/profile` routes). Strata does the profile runs and
+  the tunes itself, and `"profile": true` in the run config turns them on.
+
 ## Install
 
 ### Try it without Strata
@@ -44,7 +62,7 @@ Copy this sentence into Claude Code, Codex or another coding agent on the PC whe
 Install Strata Profile Studio on this computer and open it in my browser: https://github.com/qiuzan2001/strata-profile-studio (follow docs/AI_SETUP.md)
 ```
 
-When the install needs a fix, the agent shows you a report and asks whether to open an issue with it, so the next
+When the install needs a fix, the agent shows you a report and asks whether to open an issue with it. Then the next
 person does not hit the same thing.
 
 Tried with Claude Code 2.1.301 (`claude -p`) against a test copy of Strata. It installed and started the Studio
@@ -187,6 +205,7 @@ Each host reading is optional. When a reading is missing, its block says why, in
 | Linux, NVIDIA | per core busy and clock, temperature, package power (RAPL, needs read access), RAM, disk | `nvidia-smi`: clocks, power, temperature, fan, P-state, PCIe link, limit reasons | on hardware (RTX 5070 Ti, Ryzen 7 5800X3D) |
 | Linux, AMD | as above | `rocm-smi` or `amd-smi`: clocks, power, temperature, VRAM | from the documentation |
 | Windows, NVIDIA | per core busy and clock, RAM. No temperature, power or disk | `nvidia-smi` | from the documentation |
+| Windows 11, NVIDIA (RTX 5060 Ti 16 GB, i9-14900K, 128 GB, Python 3.12.10) | CPU busy, frequency, memory. CPU temperature and power: not available without third-party tools | `nvidia-smi`, and the engine log | a community report (Strata #2453) |
 | Windows, AMD | as above | Strata's `/metrics` only | from the documentation |
 | macOS (Metal) | per core busy, RAM. Temperature and power need powermetrics (root) | Strata's `/metrics` only | from the documentation |
 | Intel GPU (SYCL) | as for the OS | Strata's `/metrics` only | from the documentation |

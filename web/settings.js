@@ -10,6 +10,7 @@
   let preview = null, previewFor = null, picked = null;
   const edits = new Map();                               // setting id -> new file value (null: the engine default)
   let fileDoc = null;
+  let stockDoc = null;                                   // stock mode (Strata without /profile routes): GET /api/stock
   const refs = {};
 
   const norm = (v) => (v === null || v === undefined ? null : String(v));
@@ -118,6 +119,53 @@
     } catch (e) { S.toast(e.message, 'bad'); fileDoc = null; render(A); }
   }
 
+  // ------------------------------------------------------------------------------- stock mode: the timing lines
+  function stockCard(A) {
+    const d = stockDoc || {};
+    if (d.error) return S.card({ q: 'Timing lines', cls: 'span3 stock-card' }, el('p', { class: 'note', text: d.error }));
+    const env = d.env || {}, log = d.log || {};
+    const file = d.config ? d.config.split(/[\\/]/).pop() : 'the run config';
+    const val = (k) => (env[k] === undefined ? 'no run config' : env[k] === null ? 'not set' : `"${env[k]}"`);
+    const rows = [
+      ['STRATA_DECODE_TIMING in "env"', val('STRATA_DECODE_TIMING')],
+      ['STRATA_PREFILL_TIMING in "env"', val('STRATA_PREFILL_TIMING')],
+      ['Engine log', log.path ? `${log.path} · ${log.readable ? 'the Studio can read it' : 'the Studio cannot read it'}` : 'not known (start the Studio with --config or --engine-log)'],
+      ['Timing lines in the log', !log.readable ? '–' : log.timing_lines ? 'yes' : 'no timing line yet'],
+      ["Strata's tools/ (for a profile run)", d.strata_root || d.tools || '–'],
+      ['Tune', d.tune || 'available: the Studio unloads the model, then runs setup.calibrate_config'],
+    ];
+    const notes = [];
+    if (log.path && !log.readable) {
+      notes.push(`The Studio cannot read the engine log at ${log.path}. Strata can run in another container or on another PC. The Studio still shows the speeds from /metrics and the API, and runs without the breakdown columns.`);
+    } else if (!d.env_complete) {
+      notes.push('The engine writes its timing lines only when the run config has the two switches. Add them, then restart Strata so the engine starts with them.');
+    } else if (!log.timing_lines) {
+      notes.push(`The run config has the two switches. ${d.restart} Then the log gets one timing line for each request.`);
+    } else {
+      notes.push('The engine writes its timing lines. Now shows the time per component of each request.');
+    }
+    const add = S.button(`Add the timing switches to ${file}`, async () => {
+      const ok = await S.confirm({
+        title: `Add the timing switches to ${file}?`,
+        points: ['The Studio adds "STRATA_PREFILL_TIMING": "1" and "STRATA_DECODE_TIMING": "1" to "env". The other keys of "env" stay.',
+          `The Studio copies the current file to ${file}.bak first.`, d.restart],
+        ok: `Write ${file}`,
+      });
+      if (!ok) return;
+      try {
+        const res = await S.api('/api/stock/timing', { body: {} });
+        S.toast(`The Studio wrote ${file}. ${res.message}`);
+      } catch (e) { S.toast(e.message, 'bad'); }
+      stockDoc = null;
+      render(A);
+    }, 'primary', { disabled: !!(d.env_complete || !d.config || A.readOnly()) });
+    const again = S.button('Read again', () => { stockDoc = null; render(A); }, 'small');
+    return S.card({ q: 'Timing lines', sub: 'Strata without the /profile routes (0.1.44.1 as released): the Studio reads the time per component from the engine log', cls: 'span3 stock-card' },
+      el('table', { class: 'stock-table' }, el('tbody', null, rows.map(([k, v]) => el('tr', null, el('th', { text: k }), el('td', { text: v }))))),
+      notes.map((n) => el('p', { class: 'note', text: n })),
+      el('div', { class: 'row-buttons' }, add, again));
+  }
+
   // ------------------------------------------------------------------------------- settings of a run
   async function loadPreview(A, rid) {
     previewFor = rid;
@@ -190,6 +238,11 @@
       try { fileDoc = await S.api('/api/settings/file'); } catch (e) { fileDoc = { error: e.message }; }
       if (my !== token) return;
     }
+    const stock = !!(A.state && A.state.strata && A.state.strata.stock);
+    if (stock && !stockDoc) {
+      try { stockDoc = await S.api('/api/stock'); } catch (e) { stockDoc = { error: e.message }; }
+      if (my !== token) return;
+    }
     const rows = st.rows || [];
     const disagree = rows.filter((r) => layersNote(r, st.file).length);
     const tiles = el('div', { class: 'tiles' },
@@ -234,7 +287,7 @@
       A.readOnly() ? el('p', { class: 'note', text: 'This Studio runs with --read-only. It writes no file.' }) : null);
     const table = S.card({ q: 'Settings per layer', sub: 'loaded now, next load, run config file and engine default · ⚠: the layers have different values · an edit changes the file value', cls: 'span3' },
       el('div', { class: 'table-wrap' }, t));
-    S.fill(sec, head, tiles, el('div', { class: 'grid' }, diffCard, table, runCard(A)));
+    S.fill(sec, head, tiles, el('div', { class: 'grid' }, stock ? stockCard(A) : null, diffCard, table, runCard(A)));
     updateDiff();
   }
 

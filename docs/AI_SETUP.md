@@ -55,7 +55,8 @@ python3 -c "import json,sys; c=json.load(open(sys.argv[1], encoding='utf-8-sig')
 ```
 
 (On Windows, use `py -3` instead of `python3`.) The values are Strata's port (8080 when there is no `"port"`),
-whether Strata needs a key, and whether profiling is on (`True`).
+whether Strata needs a key, and the `"profile"` key. That key does something only on a Strata build with the
+profile routes (step 4).
 
 **Check:** the command prints a port.
 
@@ -76,21 +77,57 @@ request, and the Studio works without the model.
   first load can take minutes). Tell the user that you started Strata.
 - `401`: Strata has an API key. Step 7 gives it to the Studio.
 
-## 4. Turn on profiling (with the user's consent)
+## 4. Turn on the time per component (with the user's consent)
 
-The Studio shows the time per request, **Run a profile** and **Tune** only when Strata's profiling is on. It is on
-when the run config has `"profile": true`, and then `/health` has `"profile": true`.
+The Studio shows the time of each part of a request (the GPU, the CPU experts, the draft, PCIe) when the engine
+writes it. First find out which Strata this is:
+
+```
+curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:<port>/profile/status
+ls "<Strata folder>/serve/profile_page.py"
+```
+
+- **A build with the profile routes** (Strata with PRs #2660 and #2661: the status answers 200, or
+  `serve/profile_page.py` exists): go to step 4a.
+- **A release build** (Strata 0.1.44.1 as released: the status answers 404 and there is no
+  `serve/profile_page.py`): go to step 4b. Do not add `"profile": true` there. That key does nothing on this build.
+
+Before you change the run config, make sure that no tune runs. A tune writes the file at its end. On a build with
+the routes, `/profile/status` must not show a tune with `"state": "running"`. On a release build, ask the user
+whether a tune runs in the Studio.
+
+### 4a. A build with the profile routes
 
 **Check:** step 2 printed `True`, or `/health` has `"profile": true`. Then go to step 5.
 
 **When the check fails:** ask the user: "Strata's profiling is off. With it on, Strata records the time of each part
 of a request, and the Studio can show it and tune Strata. It needs a restart of Strata (the model loads again).
 Turn it on?"
-- **Yes:** first make sure that no tune runs. Run `curl -s http://127.0.0.1:<port>/profile/status`. Its answer must
-  not show a tune with `"state": "running"`. A 404 is also a pass: no profiling, so no tune. Copy `<config>` to `<config>.bak`. Add
-  the top-level key `"profile": true` and keep all other keys as they are. Stop Strata (close its window, or stop
-  its process), and start it again as in step 3.
+- **Yes:** copy `<config>` to `<config>.bak`. Add the top-level key `"profile": true` and keep all other keys as
+  they are. Stop Strata (close its window, or stop its process), and start it again as in step 3.
 - **No:** continue. The Studio then shows speeds only on Now. Runs, Compare and Settings work.
+
+### 4b. A release build (stock mode)
+
+The Studio does the work of the profile routes itself. It reads the engine's timing lines from the engine log
+(`"log"` in the run config). The engine writes them only when the run config's `"env"` has
+`"STRATA_PREFILL_TIMING": "1"` and `"STRATA_DECODE_TIMING": "1"`.
+
+**Check:** the run config's `"env"` has both keys with `"1"`, and the engine log has a line that starts with
+`strata decode timing:`. Then go to step 5.
+
+**When the check fails:** ask the user: "The engine writes the time of each part of a request only with two
+switches. They go into the run config. They need a restart of Strata, and the model loads again. Add them?"
+- **Yes:** copy `<config>` to `<config>.bak`. Add the two keys to `"env"`. When `"env"` exists, keep its other
+  keys (setup writes some of them). Then restart Strata as in step 3, and send one short chat request. The engine
+  log then has a `strata decode timing:` line. The Studio's Settings page also has a button for this write
+  (**Timing lines**).
+- **No:** continue. The Studio then shows speeds only on Now. Runs, Compare and Settings work.
+- **The log is in another container or on another PC:** the Studio cannot read it. Tell the user. The Studio then
+  shows the speeds from `/metrics` and the API, and its profile runs have no breakdown columns.
+
+On a release build, the Studio runs **Run a profile** itself with Strata's `tools/` (from the Strata folder).
+**Tune this PC** unloads the model and runs setup's calibration. Then it asks the user to restart Strata.
 
 ## 5. Check Python
 
@@ -170,8 +207,8 @@ The Strata address and the reports folder must be the ones of step 1.
 curl -s http://127.0.0.1:8090/api/state
 ```
 
-**Check:** the answer has `"studio"` and `"strata"`. In `"strata"`, `"status"` is `"ok"` (or `"profile_off"` when
-the user said no in step 4).
+**Check:** the answer has `"studio"` and `"strata"`. In `"strata"`, `"status"` is `"ok"`, or `"stock"` on a release
+build (step 4b), or `"profile_off"` when the user said no in step 4a.
 
 **When the check fails:**
 - `"status": "unreachable"`: the Studio does not reach Strata. Compare `"strata_url"` in `"studio"` with the port of
