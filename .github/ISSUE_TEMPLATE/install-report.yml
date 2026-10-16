@@ -1,0 +1,62 @@
+name: Install report
+description: The install needed a fix or a way around a problem. An AI agent or a person fills this in.
+title: "Install: "
+labels: ["install-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. This report helps the next person who installs the Studio.
+        Do not put a key, a host name or a user name in this form. Write `~` for the home folder in paths.
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and version
+      placeholder: "Windows 11 23H2, Ubuntu 24.04, macOS 15.1"
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "3.12.4"
+    validations:
+      required: true
+  - type: input
+    id: strata
+    attributes:
+      label: Strata version
+      description: '"version" in engine/BUILD.json of the Strata folder, or `git describe --tags` there.'
+      placeholder: "0.1.44.1"
+  - type: input
+    id: config
+    attributes:
+      label: Run config file name
+      description: The name only, not the content.
+      placeholder: "strata-swift-iq3_s.json"
+  - type: textarea
+    id: failed
+    attributes:
+      label: What failed
+      description: For each problem, the step of docs/AI_SETUP.md and the exact error text.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: fix
+    attributes:
+      label: What fixed it
+      description: For each problem, the command or the change that got past it.
+    validations:
+      required: true
+  - type: textarea
+    id: probe
+    attributes:
+      label: Host probe output
+      description: The output of `python3 studio.py --host-probe --config <run config>`.
+      render: text
+  - type: input
+    id: agent
+    attributes:
+      label: Who installed it
+      placeholder: "Claude Code 2.1.301, Codex, or by hand"

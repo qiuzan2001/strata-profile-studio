@@ -1,0 +1,45 @@
+name: Bug
+description: The Studio does not do what the README says.
+title: "Bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not put a key, a host name or a user name in this form. Write `~` for the home folder in paths.
+  - type: textarea
+    id: did
+    attributes:
+      label: What you did
+      description: The view, the button, and the steps before it.
+    validations:
+      required: true
+  - type: textarea
+    id: saw
+    attributes:
+      label: What you saw
+      description: The text on the page, or the error in the terminal of studio.py.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot
+      description: Drag an image into this field.
+  - type: textarea
+    id: probe
+    attributes:
+      label: Host probe output
+      description: The output of `python3 studio.py --host-probe --config <run config>`.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Studio version
+      description: The output of `git rev-parse --short HEAD` in the Studio folder, or `python3 studio.py --version`.

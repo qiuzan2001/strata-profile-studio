@@ -29,6 +29,9 @@ Copy this sentence into Claude Code, Codex or another coding agent on the PC whe
 Install Strata Profile Studio on this computer and open it in my browser: https://github.com/qiuzan2001/strata-profile-studio (follow docs/AI_SETUP.md)
 ```
 
+When the install needs a fix, the agent shows you a report and asks whether to open an issue with it, so the next
+person does not hit the same thing.
+
 Tried with Claude Code 2.1.301 (`claude -p`) against a test copy of Strata. It installed and started the Studio
 without a question, in 26 s ([details](#tried-with)). Codex, Cursor and Copilot: not tried.
 
@@ -208,8 +211,9 @@ output has file paths: remove your user name from them if you want. A report can
 ## Tried with
 
 `claude -p` (Claude Code 2.1.301) with the sentence above, on the development PC, in a scratch folder. The Strata was
-a test copy: a demo Strata that replays recorded data, on its own port. The result is in
-[docs/AI_SETUP.md](docs/AI_SETUP.md#tried-with).
+a test copy: a demo Strata that replays recorded data, on its own port. A second trial planted a fault (an old
+`python3`). The agent found a newer Python, wrote a report without secrets and asked one time to open an issue.
+The results are in [docs/AI_SETUP.md](docs/AI_SETUP.md#tried-with).
 
 ## Reference
 

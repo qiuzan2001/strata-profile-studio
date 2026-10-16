@@ -1,0 +1,54 @@
+name: Works on my PC
+description: The Studio works on a system or GPU that the README does not list as tested on hardware.
+title: "Works on: "
+labels: ["works-on"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. With this report, the table "Works on" in the README can say "on hardware" for your system.
+        Do not put a key, a host name or a user name in this form. Write `~` for the home folder in paths.
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and version
+      placeholder: "Windows 11 23H2, Fedora 41, macOS 15.1"
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU vendor and model
+      placeholder: "AMD Radeon RX 9070 XT, Apple M4 Max"
+    validations:
+      required: true
+  - type: input
+    id: strata
+    attributes:
+      label: Strata version
+      description: '"version" in engine/BUILD.json of the Strata folder, or `git describe --tags` there.'
+  - type: textarea
+    id: probe
+    attributes:
+      label: Host probe output
+      description: The output of `python3 studio.py --host-probe --config <run config>`.
+      render: text
+    validations:
+      required: true
+  - type: checkboxes
+    id: blocks
+    attributes:
+      label: Blocks on Now that showed data
+      description: Select each block of the PC module that showed a reading, not "not available".
+      options:
+        - label: Disk
+        - label: RAM
+        - label: CPU (per core)
+        - label: PCIe
+        - label: VRAM
+        - label: GPU
+  - type: input
+    id: agent
+    attributes:
+      label: Who installed it
+      placeholder: "Claude Code 2.1.301, Codex, or by hand"

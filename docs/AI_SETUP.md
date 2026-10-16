@@ -21,6 +21,8 @@ plain words. Ask the user only where a step says so.
   check.
 - **Never print the API key.** Strata's run config can have an `"api_key"`. Read it into an environment variable
   only.
+- **Keep notes of each problem.** When a check fails, or a command gives an error, write down the step and the
+  exact error text. Also write down what you did to get past it. Step 12 uses these notes.
 
 ## 1. Find the Strata install
 
@@ -57,7 +59,7 @@ whether Strata needs a key, and whether profiling is on (`True`).
 
 **Check:** the command prints a port.
 
-**When the check fails:** the file is not valid JSON. Do not repair it. Tell the user and stop.
+**When the check fails:** the file is not valid JSON. Do not change it. Tell the user and stop.
 
 ## 3. Check that Strata answers
 
@@ -98,10 +100,14 @@ python3 --version          (Windows: py -3 --version)
 
 **Check:** Python 3.11 or newer.
 
-**When the check fails:** use the Python of Strata's own environment. Strata's setup installs it:
-`<Strata folder>/.venv/bin/python` (Linux, macOS) or `<Strata folder>\.venv\Scripts\python.exe` (Windows). Run
-`--version` on it. Use it as `python3` in the steps below. When it is also older than 3.11, ask the user before you
-install a newer Python.
+**When the check fails:** look for a newer Python on this PC, in this order:
+1. By its version number: `python3.14`, `python3.13`, `python3.12`, `python3.11` (Windows: `py -3.13`, `py -3.12`,
+   `py -3.11`).
+2. The Python of Strata's own environment, which Strata's setup installs: `<Strata folder>/.venv/bin/python`
+   (Linux, macOS) or `<Strata folder>\.venv\Scripts\python.exe` (Windows).
+
+Run `--version` on each. Use the first one with 3.11 or newer as `python3` in the steps below, and write a note
+(step 12). When none is 3.11 or newer, ask the user before you install a newer Python.
 
 ## 6. Get the Studio
 
@@ -204,6 +210,75 @@ Tell the user, in plain words:
 - How to stop the Studio: stop the `python3 studio.py` process (Linux, macOS: `kill <pid>`). Closing the browser
   does not stop it.
 
+## 12. Report what you found
+
+Do this step at the end of each install. It has two cases. When neither case applies, this step ends the install.
+
+**Case A: something failed, and you fixed it or found a way around it.** For example, a tool was missing, a path
+was wrong, or a check failed. It can also be a difference on Windows, macOS or an AMD card, or a wrong sentence in
+this guide.
+
+**Case B: all steps worked, and this PC is not in the list of PCs tested on hardware.** Today that list has Linux
+with an NVIDIA card only (README, "Works on"). Thus each install on Windows, on macOS, or with an AMD or Intel card
+is case B. Get the GPU vendor from the `gpu` line of `host-probe.txt` (`nvidia-smi`, `rocm-smi` or `amd-smi`). When
+that line says `no`, use the engine's build file: `cuda_dirs` in `<Strata folder>/engine/BUILD.json` means NVIDIA.
+
+### Collect the report
+
+Write the report into `install-report.md` next to `studio.py`, with these parts:
+- **Kind:** `install-report` (case A) or `works-on` (case B).
+- **OS and version:** for example `uname -sr` and the distribution (Linux), `sw_vers` (macOS), or `ver` (Windows).
+- **Python version:** the Python that runs the Studio.
+- **Strata version:** `"version"` in `<Strata folder>/engine/BUILD.json`, or `git -C "<Strata folder>" describe
+  --tags --always`.
+- **GPU:** the vendor and the model. Case B always has it. Case A has it when the problem is about the GPU.
+- **Run config:** the name of the file only, for example `strata-swift-iq3_s.json`. Never its content.
+- **Agent:** your name and version, for example `Claude Code 2.1.301`.
+- **What failed** (case A): for each note, the step and the exact error text.
+- **What fixed it** (case A): for each note, the command or change that got past it.
+- **Host probe:** the content of `host-probe.txt`.
+
+### Remove secrets before you show it
+
+- No key: not the `"api_key"` of the run config, not `STRATA_KEY`, not a `--key` value.
+- No names of this PC or the network. Remove the host name (`hostname`), a Tailscale name (`*.ts.net`), and each IP
+  address of the local network.
+- No user name: replace the home folder in each path with `~` (for example `/home/anna/Strata` becomes `~/Strata`,
+  and `C:\Users\anna\Strata` becomes `~\Strata`).
+
+Then check the file. Use the user name, the host name and the key, if any, as search words:
+`grep -n -i -e "<user name>" -e "<host name>" -e "ts.net" -e "api_key" install-report.md` must find nothing.
+
+### Ask one time
+
+Show the report to the user. Then ask one question, one time:
+
+> May I open an issue on GitHub with this report? It helps the next person who installs the Studio.
+
+- **No:** keep `install-report.md` and tell the user where it is. Do not ask again.
+- **Yes:** open at most one issue for this install, as follows.
+
+### Open the issue (only after a yes)
+
+1. **Look for an open issue about the same problem first.** With `gh`:
+   `gh issue list --repo qiuzan2001/strata-profile-studio --state open --search "<two or three words of the error>"`.
+   Without `gh`, give the user the search page:
+   `https://github.com/qiuzan2001/strata-profile-studio/issues?q=is%3Aissue+is%3Aopen+<words>`.
+   When an open issue is about the same problem, do not open a new issue. Add the report as a comment to it:
+   `gh issue comment <number> --repo qiuzan2001/strata-profile-studio --body-file install-report.md`.
+2. **With `gh` installed and logged in** (`gh auth status` says "Logged in"):
+   `gh issue create --repo qiuzan2001/strata-profile-studio --label <kind> --title "<title>" --body-file install-report.md`.
+   The title has the OS, the GPU vendor and the problem in a few words, for example
+   `Install: Windows 11, AMD: no rocm-smi`, or `Works on: macOS 15, Apple M4`.
+3. **Without `gh`:** give the user a link that opens a filled form. Make the link from the form name and the parts
+   of the report. URL-encode each value. Keep the whole link under 6 kB. When it is longer, shorten the host probe.
+   - case A: `https://github.com/qiuzan2001/strata-profile-studio/issues/new?template=install-report.yml&title=<title>&os=<OS>&python=<Python>&strata=<Strata version>&config=<run config name>&failed=<what failed>&fix=<what fixed it>&probe=<host probe>&agent=<agent>`
+   - case B: `https://github.com/qiuzan2001/strata-profile-studio/issues/new?template=works-on.yml&title=<title>&os=<OS>&gpu=<GPU vendor and model>&strata=<Strata version>&probe=<host probe>&agent=<agent>`
+
+   GitHub fills each field of the form from the parameter with its name. The user clicks the link, reads the form
+   and clicks **Create**.
+4. Tell the user the address of the new issue or comment, or that the link is ready to click.
+
 ## Update
 
 ```
@@ -224,6 +299,8 @@ Inside the folder it keeps `studio-state.json` (its tune records and notes) and 
 
 ## What never to do
 
+- Do not open an issue or add a comment without a yes from the user. Do not open more than one issue for one
+  install.
 - Do not start the Studio with `--host` or `--allow-host` without `--key`.
 - Do not edit the run config by hand while a tune runs, and do not stop Strata during a tune.
 - Do not start **Tune this PC** or **Run a profile** for the user. Each takes the model offline for minutes.
@@ -234,6 +311,7 @@ Inside the folder it keeps `studio-state.json` (its tune records and notes) and 
 | Agent | Result |
 | --- | --- |
 | Claude Code 2.1.301 (`claude -p`), 2026-10-15 | Installed and started the Studio without a question: 7 tool calls, 26 s. |
+| Claude Code 2.1.301 (`claude -p`), 2026-10-15, with a fault | `python3` was 3.9. The agent found a newer Python, started the Studio, wrote the report without secrets and asked one time. After "No" it kept `install-report.md` and opened no issue. 12 turns, 47 s. |
 | Codex, Cursor, GitHub Copilot | Not tried. |
 
 The trial with Claude Code ran on the development PC (Linux, RTX 5070 Ti, Ryzen 7 5800X3D) in a scratch folder:
@@ -247,3 +325,12 @@ The trial with Claude Code ran on the development PC (Linux, RTX 5070 Ti, Ryzen 
 - **What it told the user.** The address, the five views, and how to stop the Studio. It also said that it changed
   nothing in Strata (profiling was on). Two readings were not available: package and core power (no read access to
   RAPL).
+
+The trial with a fault used the same test setup, with two changes:
+- **The fault.** A `python3` first in the agent's `PATH` said `Python 3.9.18` and failed on `studio.py`.
+- **A test `gh`.** It was not logged in and wrote each call to a log. The only call was `gh auth status`.
+
+The agent noted the fault in step 5 and used `/usr/bin/python3.14`. In step 12 it wrote `install-report.md`. The
+report had the OS, Python, Strata version, GPU and the name of the run config. It also had the host probe and two
+problems with their fixes. The problems were the old Python, and port 8090, which the test kept for other programs. The report had `~` for the home folder and no user name, host name or key. The agent asked "May I open an
+issue on GitHub with this report?" one time. The answer "No." ended the install, and the report stayed unchanged.
