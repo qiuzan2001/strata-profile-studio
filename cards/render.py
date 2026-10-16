@@ -284,21 +284,35 @@ def _similar(card, others) -> str:
             f"{''.join(rows)}</table></div>")
 
 
-def card_html(card, *, image="card.png", others=None, url=None, site_home=None, checked=False, json_href="card.json",
-              cards_repo: str = CARDS_REPO) -> str:
-    """The card page.  `image`: the card image next to it (card.png or card.svg).  `url`: the page's own address
-    (for the og: tags of link previews).  `others`: cards for "Similar PCs"."""
+def page_title(card) -> str:
     chat = _decode(card, "chat") or card["decode"][0]
-    title = f"{title_of(card)} · {fmt(chat['tps'])} tok/s"
+    return f"{title_of(card)} · {fmt(chat['tps'])} tok/s"
+
+
+def og_meta(card, url=None, image="card.png") -> str:
+    """The link-preview tags (og: and twitter:) of a card page.  `url`: the page's own address, `image` the card
+    image's file next to it.  Chat apps read only these: they do not follow a refresh to another page."""
+    chat = _decode(card, "chat") or card["decode"][0]
     agent = _decode(card, "agent turns")
     desc = f"Decode {fmt(chat['tps'])} tok/s {chat['kind']}" + (f" · {fmt(agent['tps'])} agent turns" if agent else "")
     if card["prefill"]:
         desc += f" · prompt read {fmt(card['prefill'][-1]['tps'], 0)} tok/s at {card['prefill'][-1]['label']}"
     img_url = (url.rstrip("/") + "/" + image) if url else image
-    og = (f"<meta property='og:type' content='website'><meta property='og:title' content='{E(title)}'>"
-          f"<meta property='og:description' content='{E(desc)}'><meta property='og:image' content='{E(img_url)}'>"
-          f"<meta property='og:image:width' content='1200'><meta property='og:image:height' content='630'>"
-          f"<meta name='twitter:card' content='summary_large_image'>" + (f"<meta property='og:url' content='{E(url)}'>" if url else ""))
+    return (f"<meta property='og:type' content='website'><meta property='og:title' content='{E(page_title(card))}'>"
+            f"<meta property='og:description' content='{E(desc)}'><meta property='og:image' content='{E(img_url)}'>"
+            f"<meta property='og:image:width' content='1200'><meta property='og:image:height' content='630'>"
+            f"<meta name='twitter:card' content='summary_large_image'><meta name='twitter:title' content='{E(page_title(card))}'>"
+            f"<meta name='twitter:description' content='{E(desc)}'><meta name='twitter:image' content='{E(img_url)}'>"
+            + (f"<meta property='og:url' content='{E(url)}'>" if url else ""))
+
+
+def card_html(card, *, image="card.png", others=None, url=None, site_home=None, checked=False, json_href="card.json",
+              cards_repo: str = CARDS_REPO) -> str:
+    """The card page.  `image`: the card image next to it (card.png or card.svg).  `url`: the page's own address
+    (for the og: tags of link previews).  `others`: cards for "Similar PCs"."""
+    chat = _decode(card, "chat") or card["decode"][0]
+    title = page_title(card)
+    og = og_meta(card, url, image)
     state = "<span class='chip ok'>checked: schema and ranges</span>" if checked else "<span class='chip'>made on this PC, not shared</span>"
     home = f"<a class='brand' href='{E(site_home)}'>Strata cards</a>" if site_home else "<span class='brand'>Strata Profile Studio</span>"
     lim = limit_of(card)

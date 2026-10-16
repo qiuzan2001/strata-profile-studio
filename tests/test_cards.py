@@ -266,6 +266,33 @@ class Site(unittest.TestCase):
         self.assertFalse("innerHTML" in html, "innerHTML in the site")
         self.assertFalse("?</h" in html, "a question heading")
 
+    def test_an_alias_page_has_the_preview_tags_and_the_png(self):
+        """A card merged into another entry: its page carries the entry's og: and twitter: tags, and its card.png
+        exists (chat apps do not follow the refresh to the entry)."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("site_build2", SITE / "build.py")
+        build = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(build)
+
+        def fake_png(card, svg, png):                     # a PNG without a browser
+            Path(png).write_bytes(b"\x89PNG\r\n\x1a\n" + card["id"].encode())
+            return True, "test"
+        build.render.write_png = fake_png
+        out = tmpdir(self) / "_site"
+        build.build(SITE / "data", out, "https://example.github.io/strata-cards", png=True)
+        idx = json.loads((out / "data" / "index.json").read_text())
+        aliases = [(r, e["id"]) for e in idx["entries"] for r in e["runs"] if r != e["id"]]
+        self.assertTrue(aliases)
+        for alias, entry in aliases:
+            page = (out / "c" / alias / "index.html").read_text()
+            png = f"https://example.github.io/strata-cards/c/{alias}/card.png"
+            self.assertIn(f"<meta property='og:image' content='{png}'>", page)
+            self.assertIn(f"<meta name='twitter:image' content='{png}'>", page)
+            self.assertIn("<meta name='twitter:card' content='summary_large_image'>", page)
+            self.assertIn("og:title", page)
+            self.assertIn(f"url=../{entry}/", page)                       # the refresh stays
+            self.assertEqual((out / "c" / alias / "card.png").read_bytes(), (out / "c" / entry / "card.png").read_bytes())
+
     def test_submit_add_limit_duplicate_remove(self):
         import importlib.util
         spec = importlib.util.spec_from_file_location("site_submit", SITE / "submit.py")

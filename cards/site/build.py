@@ -196,9 +196,13 @@ def compare_page() -> str:
     return page("Cards compared | Strata cards", body)
 
 
-def redirect_page(alias, entry_id) -> str:
-    return (f"<!doctype html><html lang='en'><head><meta charset='utf-8'><meta http-equiv='refresh' content='0; url=../{E(entry_id)}/'>"
-            f"<title>Strata cards</title></head><body><p>Card {E(alias)} is a run of entry <a href='../{E(entry_id)}/'>{E(entry_id)}</a>.</p></body></html>")
+def redirect_page(alias, entry, url=None, image="card.png") -> str:
+    """The page of a card that is a run of another entry: the entry's link-preview tags (chat apps do not follow a
+    refresh), its image next to the page, and a refresh to the entry for a browser."""
+    eid = entry["id"]
+    return (f"<!doctype html><html lang='en'><head><meta charset='utf-8'>{render.og_meta(entry, url, image)}"
+            f"<meta http-equiv='refresh' content='0; url=../{E(eid)}/'><title>{E(render.page_title(entry))} | Strata cards</title>"
+            f"</head><body><p>Card {E(alias)} is a run of entry <a href='../{E(eid)}/'>{E(eid)}</a>.</p></body></html>")
 
 
 def build(data_dir: Path, out: Path, url: str | None = None, png: bool = True) -> dict:
@@ -232,10 +236,13 @@ def build(data_dir: Path, out: Path, url: str | None = None, png: bool = True) -
                      + f"</tr>{runs}</table></div>")
             html_ = html_.replace("<div class='grid half mt'>", block + "<div class='grid half mt'>", 1)
         (d / "index.html").write_text(html_, encoding="utf-8")
+        img = "card.png" if ok else "card.svg"
         for m in members[1:]:
             a = out / "c" / m["id"]
             a.mkdir(parents=True)
-            (a / "index.html").write_text(redirect_page(m["id"], e["id"]), encoding="utf-8")
+            shutil.copy(d / img, a / img)                 # the entry's image, so the preview tags point at a file
+            alias_url = f"{url.rstrip('/')}/c/{m['id']}/" if url else None
+            (a / "index.html").write_text(redirect_page(m["id"], e, alias_url, img), encoding="utf-8")
     for c in cards:
         (out / "data" / f"{c['id']}.json").write_text(json.dumps(c, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
     (out / "data" / "index.json").write_text(json.dumps({"schema": "strata-cards-index/1", "entries": rows}, ensure_ascii=False), encoding="utf-8")
