@@ -1,0 +1,248 @@
+{
+ "schema": "strata-card/1",
+ "date": "2026-10-15",
+ "studio": "0.1.0",
+ "strata": {
+  "version": "0.1.44.1",
+  "commit": "469ceb71",
+  "engine": "0.1.44.1",
+  "backend": "CUDA 13.2",
+  "driver": "595.99.02"
+ },
+ "os": "Linux 7.0.0",
+ "model": {
+  "name": "swift-1.5-iq3_s",
+  "quant": "IQ3_S",
+  "context": 262144,
+  "kv": "int8",
+  "kv_resident": 32768
+ },
+ "pc": {
+  "cpu": {
+   "name": "AMD Ryzen 7 5800X3D",
+   "cores": 8,
+   "threads": 16,
+   "pool_workers": 7,
+   "expert_read_gbs": 25.4
+  },
+  "ram": {
+   "gib": 76.5
+  },
+  "pcie": {
+   "gen": 4,
+   "width": 16,
+   "measured_gbs": 28.0
+  },
+  "gpu": {
+   "name": "NVIDIA GeForce RTX 5070 Ti",
+   "vram_mib": 16303,
+   "power_limit_w": 300.0,
+   "expert_cache_mib": 7557,
+   "expert_slots": 3863
+  },
+  "limit": "cpu"
+ },
+ "decode": [
+  {
+   "kind": "chat",
+   "context": 44,
+   "tps": 79.2,
+   "min": 75.3,
+   "max": 92.3,
+   "n": 3,
+   "floor": 0.0335,
+   "floor_assumed": false,
+   "hit_rate": 0.777,
+   "pcie_share": 0.064,
+   "ms_per_window": 28.86,
+   "tokens_per_window": 2.36,
+   "window_ms": {
+    "GPU": 9.35,
+    "CPU experts": 14.35,
+    "draft": 1.72,
+    "adapt wait": 2.6,
+    "other": 0.83
+   }
+  },
+  {
+   "kind": "long context",
+   "context": 32049,
+   "tps": 89.0,
+   "min": 89.0,
+   "max": 89.0,
+   "n": 1,
+   "floor": 0.0302,
+   "floor_assumed": false,
+   "hit_rate": 0.867,
+   "pcie_share": 0.035,
+   "ms_per_window": 21.15,
+   "tokens_per_window": 1.88,
+   "window_ms": {
+    "GPU": 9.74,
+    "CPU experts": 7.52,
+    "draft": 2.0,
+    "adapt wait": 1.08,
+    "other": 0.81
+   }
+  },
+  {
+   "kind": "agent turns",
+   "context": 8732,
+   "tps": 88.5,
+   "min": 66.7,
+   "max": 98.8,
+   "n": 5,
+   "floor": 0.1465,
+   "floor_assumed": false,
+   "hit_rate": 0.811,
+   "pcie_share": 0.057,
+   "ms_per_window": 28.28,
+   "tokens_per_window": 2.4,
+   "window_ms": {
+    "GPU": 10.06,
+    "CPU experts": 13.57,
+    "draft": 1.9,
+    "adapt wait": 1.89,
+    "other": 0.86
+   }
+  }
+ ],
+ "prefill": [
+  {
+   "label": "2K",
+   "tokens": 2023,
+   "tps": 1771.3,
+   "floor": 0.0313,
+   "floor_assumed": false,
+   "read_s": 1.1
+  },
+  {
+   "label": "16K",
+   "tokens": 16058,
+   "tps": 2950.3,
+   "floor": 0.03,
+   "floor_assumed": false,
+   "read_s": 5.4
+  },
+  {
+   "label": "32K",
+   "tokens": 32049,
+   "tps": 2998.3,
+   "floor": 0.03,
+   "floor_assumed": false,
+   "read_s": 10.7
+  }
+ ],
+ "agent_turns": [
+  {
+   "turn": 0,
+   "tps": 53.6,
+   "prompt_tokens": 609
+  },
+  {
+   "turn": 1,
+   "tps": 66.7,
+   "prompt_tokens": 3755
+  },
+  {
+   "turn": 2,
+   "tps": 87.9,
+   "prompt_tokens": 5288
+  },
+  {
+   "turn": 3,
+   "tps": 98.8,
+   "prompt_tokens": 8732
+  },
+  {
+   "turn": 4,
+   "tps": 94.1,
+   "prompt_tokens": 11658
+  },
+  {
+   "turn": 5,
+   "tps": 88.5,
+   "prompt_tokens": 14593
+  }
+ ],
+ "settings": [
+  {
+   "flag": "--pcie-frac",
+   "value": "0.35",
+   "default": "auto (0.55 for native packs, then the start-up PCIe probe)",
+   "calibrated": true
+  },
+  {
+   "flag": "--spec-min-p",
+   "value": "0.70",
+   "default": "0.0",
+   "calibrated": true
+  },
+  {
+   "flag": "--adapt-every",
+   "value": "1",
+   "default": "4",
+   "calibrated": true
+  },
+  {
+   "flag": "--adapt-swaps",
+   "value": "80",
+   "default": "96",
+   "calibrated": true
+  },
+  {
+   "flag": "--adapt-decay",
+   "value": "0.97",
+   "default": "0.7",
+   "calibrated": true
+  },
+  {
+   "flag": "--kv-resident",
+   "value": "32768",
+   "default": "0: all KV in VRAM",
+   "calibrated": false
+  },
+  {
+   "flag": "--max-context",
+   "value": "262144",
+   "default": "4096",
+   "calibrated": false
+  },
+  {
+   "flag": "--expert-cache",
+   "value": "auto",
+   "default": "0 (setup writes auto)",
+   "calibrated": false
+  },
+  {
+   "flag": "--spec",
+   "value": "4",
+   "default": "0 (CUDA)",
+   "calibrated": false
+  },
+  {
+   "flag": "STRATA_PREFILL_CPU_SHARE_MAX",
+   "value": "3072",
+   "default": "3072",
+   "calibrated": false
+  }
+ ],
+ "tune": {
+  "calibration_tok_s": 96.5,
+  "minutes": 11.5,
+  "kept": "--pcie-frac 0.35, --spec-min-p 0.70, --adapt-every 1, --adapt-swaps 80, --adapt-decay 0.97",
+  "before_run": 8
+ },
+ "noise": {
+  "pairs": 3,
+  "labels": [
+   "runs 2 and 4, same settings",
+   "runs 2 and 5, same settings",
+   "runs 4 and 5, same settings"
+  ]
+ },
+ "run": 9,
+ "defaults": false,
+ "id": "m47qru4dpy",
+ "name": ""
+}

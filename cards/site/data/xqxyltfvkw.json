@@ -1,0 +1,213 @@
+{
+ "schema": "strata-card/1",
+ "date": "2026-10-15",
+ "studio": "0.1.0",
+ "strata": {
+  "version": "0.1.44.1",
+  "commit": "0a2f1966",
+  "engine": "0.1.44.1",
+  "backend": "CUDA 13.2",
+  "driver": "595.99.02"
+ },
+ "os": "Linux 7.0.0",
+ "model": {
+  "name": "swift-1.5-iq3_s",
+  "quant": "IQ3_S",
+  "context": 262144,
+  "kv": "int8",
+  "kv_resident": 32768
+ },
+ "pc": {
+  "cpu": {
+   "name": "AMD Ryzen 7 5800X3D",
+   "cores": 8,
+   "threads": 16,
+   "pool_workers": 7,
+   "expert_read_gbs": 25.4
+  },
+  "ram": {
+   "gib": 76.5
+  },
+  "pcie": {
+   "gen": 4,
+   "width": 16,
+   "measured_gbs": 28.0
+  },
+  "gpu": {
+   "name": "NVIDIA GeForce RTX 5070 Ti",
+   "vram_mib": 16303,
+   "power_limit_w": 300.0,
+   "expert_cache_mib": 7586,
+   "expert_slots": 3880
+  },
+  "limit": "cpu"
+ },
+ "decode": [
+  {
+   "kind": "chat",
+   "context": 44,
+   "tps": 75.7,
+   "min": 73.3,
+   "max": 76.8,
+   "n": 3,
+   "floor": 0.0335,
+   "floor_assumed": false,
+   "hit_rate": 0.708,
+   "pcie_share": 0.095,
+   "ms_per_window": 33.57,
+   "tokens_per_window": 2.53,
+   "window_ms": {
+    "GPU": 10.22,
+    "CPU experts": 19.32,
+    "draft": 1.78,
+    "adapt wait": 1.42,
+    "other": 0.83
+   }
+  },
+  {
+   "kind": "long context",
+   "context": 32049,
+   "tps": 82.0,
+   "min": 82.0,
+   "max": 82.0,
+   "n": 1,
+   "floor": 0.0302,
+   "floor_assumed": false,
+   "hit_rate": 0.816,
+   "pcie_share": 0.062,
+   "ms_per_window": 27.39,
+   "tokens_per_window": 2.25,
+   "window_ms": {
+    "GPU": 9.97,
+    "CPU experts": 13.05,
+    "draft": 2.28,
+    "adapt wait": 1.29,
+    "other": 0.8
+   }
+  },
+  {
+   "kind": "agent turns",
+   "context": 8721,
+   "tps": 71.7,
+   "min": 65.4,
+   "max": 98.3,
+   "n": 5,
+   "floor": 0.1465,
+   "floor_assumed": false,
+   "hit_rate": 0.793,
+   "pcie_share": 0.063,
+   "ms_per_window": 32.18,
+   "tokens_per_window": 2.38,
+   "window_ms": {
+    "GPU": 10.14,
+    "CPU experts": 17.87,
+    "draft": 2.02,
+    "adapt wait": 1.25,
+    "other": 0.9
+   }
+  }
+ ],
+ "prefill": [
+  {
+   "label": "2K",
+   "tokens": 2023,
+   "tps": 1118.1,
+   "floor": 0.0313,
+   "floor_assumed": false,
+   "read_s": 1.8
+  },
+  {
+   "label": "16K",
+   "tokens": 16058,
+   "tps": 2982.0,
+   "floor": 0.03,
+   "floor_assumed": false,
+   "read_s": 5.4
+  },
+  {
+   "label": "32K",
+   "tokens": 32049,
+   "tps": 3041.3,
+   "floor": 0.03,
+   "floor_assumed": false,
+   "read_s": 10.5
+  }
+ ],
+ "agent_turns": [
+  {
+   "turn": 0,
+   "tps": 47.5,
+   "prompt_tokens": 609
+  },
+  {
+   "turn": 1,
+   "tps": 65.4,
+   "prompt_tokens": 3744
+  },
+  {
+   "turn": 2,
+   "tps": 66.8,
+   "prompt_tokens": 5277
+  },
+  {
+   "turn": 3,
+   "tps": 79.7,
+   "prompt_tokens": 8721
+  },
+  {
+   "turn": 4,
+   "tps": 98.3,
+   "prompt_tokens": 11647
+  },
+  {
+   "turn": 5,
+   "tps": 71.7,
+   "prompt_tokens": 14596
+  }
+ ],
+ "settings": [
+  {
+   "flag": "--spec-min-p",
+   "value": "0.5",
+   "default": "0.0",
+   "calibrated": true
+  },
+  {
+   "flag": "--kv-resident",
+   "value": "32768",
+   "default": "0: all KV in VRAM",
+   "calibrated": false
+  },
+  {
+   "flag": "--max-context",
+   "value": "262144",
+   "default": "4096",
+   "calibrated": false
+  },
+  {
+   "flag": "--expert-cache",
+   "value": "auto",
+   "default": "0 (setup writes auto)",
+   "calibrated": false
+  },
+  {
+   "flag": "--spec",
+   "value": "4",
+   "default": "0 (CUDA)",
+   "calibrated": false
+  }
+ ],
+ "tune": null,
+ "noise": {
+  "pairs": 3,
+  "labels": [
+   "runs 2 and 4, same settings",
+   "runs 2 and 5, same settings",
+   "runs 4 and 5, same settings"
+  ]
+ },
+ "run": 1,
+ "defaults": true,
+ "id": "xqxyltfvkw",
+ "name": ""
+}

@@ -1,0 +1,243 @@
+{
+ "schema": "strata-card/1",
+ "date": "2026-10-15",
+ "studio": "0.1.0",
+ "strata": {
+  "version": "0.1.44.1",
+  "commit": "469ceb71",
+  "engine": "0.1.44.1",
+  "backend": "CUDA 13.2",
+  "driver": "595.99.02"
+ },
+ "os": "Linux 7.0.0",
+ "model": {
+  "name": "swift-1.5-iq3_s",
+  "quant": "IQ3_S",
+  "context": 262144,
+  "kv": "int8",
+  "kv_resident": 32768
+ },
+ "pc": {
+  "cpu": {
+   "name": "AMD Ryzen 7 5800X3D",
+   "cores": 8,
+   "threads": 16,
+   "pool_workers": 7,
+   "expert_read_gbs": 25.4
+  },
+  "ram": {
+   "gib": 76.5
+  },
+  "pcie": {
+   "gen": 4,
+   "width": 16,
+   "measured_gbs": 28.0
+  },
+  "gpu": {
+   "name": "NVIDIA GeForce RTX 5070 Ti",
+   "vram_mib": 16303,
+   "power_limit_w": 300.0,
+   "expert_cache_mib": 7499,
+   "expert_slots": 3834
+  },
+  "limit": "cpu"
+ },
+ "decode": [
+  {
+   "kind": "chat",
+   "context": 44,
+   "tps": 77.4,
+   "min": 74.2,
+   "max": 89.6,
+   "n": 3,
+   "floor": 0.0335,
+   "floor_assumed": false,
+   "hit_rate": 0.792,
+   "pcie_share": 0.062,
+   "ms_per_window": 31.62,
+   "tokens_per_window": 2.53,
+   "window_ms": {
+    "GPU": 9.69,
+    "CPU experts": 16.47,
+    "draft": 2.03,
+    "adapt wait": 2.59,
+    "other": 0.84
+   }
+  },
+  {
+   "kind": "long context",
+   "context": 32049,
+   "tps": 91.4,
+   "min": 91.4,
+   "max": 91.4,
+   "n": 1,
+   "floor": 0.0302,
+   "floor_assumed": false,
+   "hit_rate": 0.866,
+   "pcie_share": 0.04,
+   "ms_per_window": 25.01,
+   "tokens_per_window": 2.29,
+   "window_ms": {
+    "GPU": 10.35,
+    "CPU experts": 10.4,
+    "draft": 2.46,
+    "adapt wait": 0.97,
+    "other": 0.83
+   }
+  },
+  {
+   "kind": "agent turns",
+   "context": 8732,
+   "tps": 84.2,
+   "min": 66.4,
+   "max": 89.2,
+   "n": 5,
+   "floor": 0.1465,
+   "floor_assumed": false,
+   "hit_rate": 0.812,
+   "pcie_share": 0.06,
+   "ms_per_window": 30.56,
+   "tokens_per_window": 2.39,
+   "window_ms": {
+    "GPU": 10.36,
+    "CPU experts": 15.45,
+    "draft": 2.14,
+    "adapt wait": 1.75,
+    "other": 0.86
+   }
+  }
+ ],
+ "prefill": [
+  {
+   "label": "2K",
+   "tokens": 2023,
+   "tps": 1793.0,
+   "floor": 0.0313,
+   "floor_assumed": false,
+   "read_s": 1.1
+  },
+  {
+   "label": "16K",
+   "tokens": 16058,
+   "tps": 3016.5,
+   "floor": 0.03,
+   "floor_assumed": false,
+   "read_s": 5.3
+  },
+  {
+   "label": "32K",
+   "tokens": 32049,
+   "tps": 3016.5,
+   "floor": 0.03,
+   "floor_assumed": false,
+   "read_s": 10.6
+  }
+ ],
+ "agent_turns": [
+  {
+   "turn": 0,
+   "tps": 51.3,
+   "prompt_tokens": 609
+  },
+  {
+   "turn": 1,
+   "tps": 66.4,
+   "prompt_tokens": 3755
+  },
+  {
+   "turn": 2,
+   "tps": 77.2,
+   "prompt_tokens": 5288
+  },
+  {
+   "turn": 3,
+   "tps": 85.0,
+   "prompt_tokens": 8732
+  },
+  {
+   "turn": 4,
+   "tps": 89.2,
+   "prompt_tokens": 11658
+  },
+  {
+   "turn": 5,
+   "tps": 84.2,
+   "prompt_tokens": 14593
+  }
+ ],
+ "settings": [
+  {
+   "flag": "--pcie-frac",
+   "value": "0.35",
+   "default": "auto (0.55 for native packs, then the start-up PCIe probe)",
+   "calibrated": true
+  },
+  {
+   "flag": "--spec-min-p",
+   "value": "0.70",
+   "default": "0.0",
+   "calibrated": true
+  },
+  {
+   "flag": "--adapt-every",
+   "value": "1",
+   "default": "4",
+   "calibrated": true
+  },
+  {
+   "flag": "--adapt-swaps",
+   "value": "160",
+   "default": "96",
+   "calibrated": true
+  },
+  {
+   "flag": "--adapt-decay",
+   "value": "0.97",
+   "default": "0.7",
+   "calibrated": true
+  },
+  {
+   "flag": "--kv-resident",
+   "value": "32768",
+   "default": "0: all KV in VRAM",
+   "calibrated": false
+  },
+  {
+   "flag": "--max-context",
+   "value": "262144",
+   "default": "4096",
+   "calibrated": false
+  },
+  {
+   "flag": "--expert-cache",
+   "value": "auto",
+   "default": "0 (setup writes auto)",
+   "calibrated": false
+  },
+  {
+   "flag": "--spec",
+   "value": "4",
+   "default": "0 (CUDA)",
+   "calibrated": false
+  },
+  {
+   "flag": "STRATA_PREFILL_CPU_SHARE_MAX",
+   "value": "3072",
+   "default": "3072",
+   "calibrated": false
+  }
+ ],
+ "tune": null,
+ "noise": {
+  "pairs": 3,
+  "labels": [
+   "runs 2 and 4, same settings",
+   "runs 2 and 5, same settings",
+   "runs 4 and 5, same settings"
+  ]
+ },
+ "run": 8,
+ "defaults": false,
+ "id": "3e52owphpa",
+ "name": ""
+}

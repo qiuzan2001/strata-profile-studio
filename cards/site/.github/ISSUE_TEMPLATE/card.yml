@@ -1,0 +1,19 @@
+name: Share a card
+description: Add the result card of one Strata profile run to the site. Strata Profile Studio makes the card.
+title: "Card: "
+labels: ["card"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Make the card with Strata Profile Studio: **Share** on a run, or `python3 studio.py --card <report>`.
+        Paste the content of `card.json` below. The card has no prompts, host names, user names, paths or keys.
+        A check reads the JSON, and the card address comes back in a comment after about one minute.
+  - type: textarea
+    id: card
+    attributes:
+      label: Card JSON
+      description: The whole content of card.json.
+      render: json
+    validations:
+      required: true

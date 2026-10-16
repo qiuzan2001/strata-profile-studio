@@ -1,0 +1,12 @@
+name: Remove a card
+description: Remove a card that you shared. Only the person who shared the card can remove it this way.
+title: "Remove: "
+labels: ["remove"]
+body:
+  - type: input
+    id: card
+    attributes:
+      label: Card id
+      description: The 10 letters and digits in the card's address, for example 32kkpqgxnj.
+    validations:
+      required: true

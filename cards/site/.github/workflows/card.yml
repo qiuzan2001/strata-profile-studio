@@ -1,0 +1,65 @@
+# The cards site: add or remove a card from an issue, then build and deploy the site to GitHub Pages.
+# It uses the built-in GITHUB_TOKEN only. No personal token and no other secret.
+# The issue text is never put into a shell command: submit.py reads the event file.
+name: cards
+
+on:
+  issues:
+    types: [opened]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: cards
+  cancel-in-progress: false
+
+jobs:
+  site:
+    if: >-
+      github.event_name != 'issues' ||
+      contains(github.event.issue.labels.*.name, 'card') ||
+      contains(github.event.issue.labels.*.name, 'remove')
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Read the issue (add or remove a card)
+        id: submit
+        if: github.event_name == 'issues'
+        run: python submit.py --event "$GITHUB_EVENT_PATH" --data data --url "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+      - name: Save the data
+        if: steps.submit.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          git commit -m "Cards: issue #${{ github.event.issue.number }}"
+          git push
+      - name: Build the site
+        run: python build.py --data data --out _site --url "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
+      - name: Answer the issue
+        if: github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment "$NUMBER" --repo "$GITHUB_REPOSITORY" --body-file message.txt
+          gh issue close "$NUMBER" --repo "$GITHUB_REPOSITORY"
