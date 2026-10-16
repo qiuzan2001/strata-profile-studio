@@ -246,7 +246,11 @@ class Site(unittest.TestCase):
         build = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(build)
         out = tmpdir(self) / "_site"
-        r = build.build(SITE / "data", out, "https://example.github.io/strata-cards", png=False)
+        data = tmpdir(self) / "data"
+        import shutil
+        shutil.copytree(SITE / "data", data)
+        (data / "submitters.json").write_text("{}")                # submit.py's ledger is not a card
+        r = build.build(data, out, "https://example.github.io/strata-cards", png=False)
         self.assertEqual((r["cards"], r["invalid"]), (9, []))
         self.assertTrue((out / "index.html").is_file() and (out / "compare.html").is_file() and (out / "site.js").is_file())
         idx = json.loads((out / "data" / "index.json").read_text())

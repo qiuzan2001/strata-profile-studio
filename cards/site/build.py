@@ -48,7 +48,7 @@ def dup_key(card):
 def load(data_dir: Path):
     cards, bad = [], []
     for f in sorted(data_dir.glob("*.json")):
-        if f.name == "index.json":
+        if f.name in ("index.json", "submitters.json"):     # the index, and submit.py's ledger: not cards
             continue
         try:
             c = json.loads(f.read_text(encoding="utf-8"))
