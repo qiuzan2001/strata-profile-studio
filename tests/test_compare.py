@@ -38,7 +38,7 @@ class NoPair(unittest.TestCase):
                                                                            "hit_points": 0.02}, "pairs": []})
         v = verdict(self.out, "decode", "chat")
         self.assertEqual(v["state"], "better")
-        self.assertEqual(v["text"], "chat: 8.2% faster, 75.7 → 81.9 tok/s; largest change: adapt wait +5.6 ms per "
+        self.assertEqual(v["text"], "chat: 8.2% faster, 75.7 → 81.9 tok/s. Largest change: adapt wait +5.6 ms per "
                                     "window (assumed floor, no same-settings pair measured yet)")
         self.assertIsNone(v["floor_note"])
         r = row(self.out, "chat", "decode tok/s")
@@ -85,7 +85,7 @@ class NoPair(unittest.TestCase):
         out = compare.compute(self.a, b)
         r = row(out, "chat", "expert cache hit rate (points)")
         self.assertEqual((r["floor_kind"], r["floor"], r["state"], r["delta"]), ("pts", 2.0, "better", 7.3))
-        self.assertTrue(verdict(out, "decode", "chat")["text"].count("; hit rate 70.8% → 78.1%"))
+        self.assertTrue(verdict(out, "decode", "chat")["text"].count(". Hit rate 70.8% → 78.1%"))
 
     def test_settings_diff_and_warnings(self):
         diff = {x["flag"]: x for x in self.out["settings"]}
@@ -135,8 +135,8 @@ class WithPairs(unittest.TestCase):
         r = row(out, "chat", "decode tok/s")
         self.assertAlmostEqual(r["floor"], 0.0335, places=3)       # 77.6 (run 2) against 80.2 (run 4)
         v = verdict(out, "decode", "chat")
-        self.assertEqual(v["floor_note"], "noise floor from runs 2 and 4, same settings; "
-                                          "the widest spread of 4 runs with the same settings")
+        self.assertEqual(v["floor_note"], "noise floor from runs 2 and 4, same settings "
+                                          "(the widest spread of 4 runs with the same settings)")
         self.assertIn("inside the 3.3% noise floor", v["text"])
 
     def test_the_tune_result_is_inside_the_floor_with_the_sign_test_said(self):
@@ -146,8 +146,8 @@ class WithPairs(unittest.TestCase):
         self.assertIn("chat: no measurable change (+0.4%, inside the 3.3% noise floor)", v["text"])
         agent = verdict(out, "decode", "agent turns")
         self.assertEqual(agent["state"], "same")
-        self.assertIn("; 6 of 6 agent turns slower", agent["text"])
-        self.assertIn("largest change: CPU experts +2.7 ms per window", agent["text"])
+        self.assertIn(". 6 of 6 agent turns slower", agent["text"])
+        self.assertIn("Largest change: CPU experts +2.7 ms per window", agent["text"])
 
     def test_a_change_above_a_measured_floor_counts_and_below_it_does_not(self):
         s = self.s

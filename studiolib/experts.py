@@ -36,7 +36,7 @@ def parse_profile(blob: bytes) -> dict:
         raise ProfileError("not a Strata expert profile (no STRP header)")
     version, nl, ne, slots, n = struct.unpack_from("<5I", blob, 4)
     if version != 1:
-        raise ProfileError(f"a version {version} profile; this reader knows version 1")
+        raise ProfileError(f"a version {version} profile. This reader knows version 1")
     if nl == 0 or ne == 0 or nl * ne > 1 << 22 or n > nl * ne:
         raise ProfileError("the header's layout is not plausible")
     if len(blob) < 24 + 4 * n:

@@ -122,9 +122,9 @@ class State:
         bad = self.path.with_name(self.path.name + ".bad")
         try:
             os.replace(self.path, bad)
-            self.warning = f"The state file could not be read; it was renamed to {bad.name} and the Studio started empty."
+            self.warning = f"The state file could not be read. It was renamed to {bad.name} and the Studio started empty."
         except OSError:
-            self.warning = "The state file could not be read; the Studio started empty."
+            self.warning = "The state file could not be read. The Studio started empty."
 
     def write(self, force: bool = False) -> bool:
         """Write now when something changed and the last write is at least a second ago (or `force`)."""

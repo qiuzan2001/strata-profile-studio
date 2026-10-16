@@ -104,7 +104,7 @@ class StrataClient:
             except (OSError, http.client.HTTPException) as e:
                 raise StrataError("unreachable", f"Strata does not answer ({type(e).__name__}).") from None
             if len(raw) > MAX_BODY:
-                raise StrataError("too_large", "Strata's answer is larger than 8 MiB; the Studio ignored it.",
+                raise StrataError("too_large", "Strata's answer is larger than 8 MiB. The Studio ignored it.",
                                   resp.status)
             hdrs = {k.lower(): v for k, v in resp.getheaders()}
             data = None

@@ -192,7 +192,7 @@ def _note(fl: dict) -> str | None:
         return None
     note = f"noise floor from {fl['label']}"
     if fl["n"] > 2:
-        note += f"; the widest spread of {fl['n']} runs with the same settings"
+        note += f" (the widest spread of {fl['n']} runs with the same settings)"
     return note
 
 
@@ -223,10 +223,10 @@ def _verdict_decode(kind, da, db, fl, noise, hl):
         if _state(vb - va, p, pf["value"], "lower", "ms") != "same" and (biggest is None or abs(vb - va) > abs(biggest[1])):
             biggest = (part, vb - va)
     if biggest:
-        text += f"; largest change: {biggest[0]} {biggest[1]:+.1f} ms per window"
+        text += f". Largest change: {biggest[0]} {biggest[1]:+.1f} ms per window"
     ha, hb = da.get("hit_rate"), db.get("hit_rate")
     if ha is not None and hb is not None and abs(hb - ha) > hl["value"] + 1e-12:
-        text += f"; hit rate {ha * 100:.1f}% → {hb * 100:.1f}%"
+        text += f". Hit rate {ha * 100:.1f}% → {hb * 100:.1f}%"
     if fl["assumed"]:
         text += f" ({ASSUMED_NOTE})"
     return {"group": "decode", "key": kind, "state": state, "text": text, "floor_note": _note(fl)}
@@ -358,7 +358,7 @@ def compute(a: dict, b: dict, pool: list[dict] | None = None) -> dict:
         sentence = f"{both} of {both} agent turns {'faster' if ups == both else 'slower'}"
         v = next((v for v in verdicts if v["group"] == "decode" and v["key"] == "agent turns"), None)
         if v and v["state"] != "missing":
-            v["text"] = v["text"].replace(f" ({ASSUMED_NOTE})", "") + f"; {sentence}" + \
+            v["text"] = v["text"].replace(f" ({ASSUMED_NOTE})", "") + f". {sentence}" + \
                 (f" ({ASSUMED_NOTE})" if f" ({ASSUMED_NOTE})" in v["text"] else "")
         else:
             verdicts.append({"group": "agent", "key": "turns", "state": "same", "text": sentence, "floor_note": None})

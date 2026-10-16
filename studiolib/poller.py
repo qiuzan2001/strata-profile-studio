@@ -19,7 +19,7 @@ LIVE_MAX = 300
 FRESH_UPDATE_S = 15.0       # a sample touched this recently is re-sent to a page that asks for "since"
 SEEN_METRICS_MAX = 600
 
-MSG_UNREACHABLE = ("Strata does not answer at {url}. Start it (./start.sh or START-HERE.bat); retrying every 5 s.")
+MSG_UNREACHABLE = ("Strata does not answer at {url}. Start it (./start.sh or START-HERE.bat). Retrying every 5 s.")
 MSG_KEY = "Strata needs an API key: start the Studio with --key KEY or STRATA_KEY=KEY."
 MSG_PROFILE_OFF = ("Profiling is off in Strata: add \"profile\": true to strata-<model>.json (or start "
                    "serve/server.py with --profile) and restart Strata.")

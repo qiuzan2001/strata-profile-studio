@@ -35,17 +35,17 @@ def _read(path) -> tuple[bytes, dict]:
     p = Path(path)
     try:
         if p.stat().st_size > CONFIG_MAX:
-            raise ConfigWriteError(412, "The config file is larger than 1 MiB; the Studio does not write it.")
+            raise ConfigWriteError(412, "The config file is larger than 1 MiB. The Studio does not write it.")
         raw = p.read_bytes()
     except OSError as e:
         raise ConfigWriteError(412, f"The config file cannot be read ({e.strerror or type(e).__name__}).")
     try:
         cfg = json.loads(raw.decode("utf-8-sig"))
     except ValueError:
-        raise ConfigWriteError(412, "The config file is not valid JSON; the Studio does not write it.")
+        raise ConfigWriteError(412, "The config file is not valid JSON. The Studio does not write it.")
     if not isinstance(cfg, dict) or not isinstance(cfg.get("args"), list) or \
             not all(isinstance(a, str) for a in cfg["args"]):
-        raise ConfigWriteError(412, "The config file has no list of arguments (\"args\"); the Studio does not write it.")
+        raise ConfigWriteError(412, "The config file has no list of arguments (\"args\"). The Studio does not write it.")
     return raw, cfg
 
 
@@ -138,7 +138,7 @@ def apply(config_path, rep: dict, flags: list, sha: str, busy_reason: str | None
             cfg["env"] = env
         changes.append({"flag": f, "from": r["file"], "to": r["run"]})
     if not changes:
-        raise ConfigWriteError(400, "The file already has these values; nothing was written.")
+        raise ConfigWriteError(400, "The file already has these values. Nothing was written.")
     return _write(config_path, raw, cfg, changes)
 
 
@@ -191,8 +191,8 @@ def _write(config_path, raw: bytes, cfg: dict, changes: list) -> dict:
             tmp.unlink()
         except OSError:
             pass
-        raise ConfigWriteError(500, f"The config file could not be written ({e.strerror or type(e).__name__}); "
-                                    "it is unchanged.")
+        raise ConfigWriteError(500, f"The config file could not be written ({e.strerror or type(e).__name__}). "
+                                    "It is unchanged.")
     return {"ok": True, "path": str(p), "backup": str(bak), "changes": changes,
             "sha": hashlib.sha256(data).hexdigest()}
 

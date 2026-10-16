@@ -153,7 +153,7 @@ def make_card(rep: dict, pool: list, *, run=None, tune=None, facts=None, name=""
     card["name"] = check_name(name)
     errs = validate.validate(card)
     if errs:
-        raise CardError("The card is not valid: " + "; ".join(errs[:3]))
+        raise CardError("The card is not valid: " + " · ".join(errs[:3]))
     return card
 
 

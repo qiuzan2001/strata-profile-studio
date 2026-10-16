@@ -43,7 +43,7 @@ def parse(lines) -> dict:
 
 # which builds print each line (src/program/generate.cpp; the SYCL build has its own fork of that file)
 PRINTED_BY = {
-    "probe": "CUDA builds with --serve and no --pcie-frac (AMD HIP: gfx1200/gfx1201 native packs only; not SYCL)",
+    "probe": "CUDA builds with --serve and no --pcie-frac (AMD HIP: gfx1200/gfx1201 native packs only. Not SYCL)",
     "pool": "all builds, once at the engine start",
     "vram_warning": "CUDA, HIP and Metal builds, when less than 512 MiB of VRAM is free (1024 MiB on Windows)",
 }

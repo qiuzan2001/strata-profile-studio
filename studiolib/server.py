@@ -297,10 +297,10 @@ class StudioApp:
         if self.defaults_run is not None and self.defaults_run.state == "running":
             return "A profile run with the engine defaults is going."
         if self.flow.running():
-            return "A tune is running; Strata writes the config file at its end. Wait for it to finish."
+            return "A tune is running. Strata writes the config file at its end. Wait for it to finish."
         tune = self.poller.tune_status().get("tune")
         if isinstance(tune, dict) and tune.get("state") == "running":
-            return "Strata is tuning; it writes the config file at the end. Wait for it to finish."
+            return "Strata is tuning. It writes the config file at the end. Wait for it to finish."
         return None
 
     def settings_doc(self) -> dict:
@@ -610,7 +610,7 @@ def make_handler(app: StudioApp):
             if err:
                 return self._error(400, err)
             if app.flow.running():
-                return self._error(409, "A tune is running; its own profile runs are part of it.")
+                return self._error(409, "A tune is running. Its own profile runs are part of it.")
             p = app.poller
             if p.status == "unreachable":
                 return self._error(502, f"Strata does not answer at {app.strata_url}.")

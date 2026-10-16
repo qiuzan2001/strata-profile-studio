@@ -290,7 +290,7 @@ class Flow:
     def _maybe_cancel(self, stage: str):
         if self._cancel:
             self._skip_rest(stage)
-            raise _Stop("cancelled", None, "Cancelled; Strata's profile run had to finish first.")
+            raise _Stop("cancelled", None, "Cancelled. Strata's profile run had to finish first.")
 
     # --- stage 1
     def _stage_check(self):
@@ -333,7 +333,7 @@ class Flow:
                     self._fail(key, f"The profile run failed (exit {st.get('returncode')}). {last}".strip())
             if self.clock() > deadline:
                 self._skip_rest(key)
-                self._fail(key, f"The profile run did not end within {int(timeout)} s; the Studio stopped waiting.")
+                self._fail(key, f"The profile run did not end within {int(timeout)} s. The Studio stopped waiting.")
         rid = self._report_id(key, _d(st.get("report")))
         with self.lock:
             self.rec["before_report" if key == "before" else "after_report"] = rid
@@ -395,7 +395,7 @@ class Flow:
                     break
             if self.clock() > deadline:
                 self._skip_rest("tune")
-                self._fail("tune", "Strata's tuning is still running; the Studio stopped waiting. "
+                self._fail("tune", "Strata's tuning is still running. The Studio stopped waiting. "
                                    "It cannot be stopped from here.")
         self._finish_tune(tune)
 
