@@ -76,8 +76,8 @@ class Detection(StockCase):
         wait_for(lambda: s.poller.status == "stock", what="stock mode")
         st = request(s, "GET", "/api/state")[2]["strata"]
         self.assertEqual(st["status"], "stock")
-        self.assertEqual(st["message"], "This Strata build has no profile routes (Strata 0.1.44.1 as released; they "
-                                        "are in Strata PR #2661). The Studio does that work itself: see Settings.")
+        self.assertEqual(st["message"], "This Strata build has no profile routes (Strata 0.1.44.1 as released). They "
+                                        "are in Strata PR #2661. The Studio does that work itself: see Settings.")
         self.assertTrue(st["stock"])
         self.assertNotIn("\"profile\": true", st["message"])           # that key does nothing on a stock build
         self.assertIsNot(st["profile"], False)                           # not "profiling off"

@@ -33,7 +33,7 @@ from .strata import Response, StrataError
 
 VENDOR = Path(__file__).resolve().parent / "vendor"
 TIMING_ENV = {"STRATA_PREFILL_TIMING": "1", "STRATA_DECODE_TIMING": "1"}
-MSG_STOCK = ("This Strata build has no profile routes (Strata 0.1.44.1 as released; they are in Strata PR #2661). "
+MSG_STOCK = ("This Strata build has no profile routes (Strata 0.1.44.1 as released). They are in Strata PR #2661. "
              "The Studio does that work itself: see Settings.")
 MSG_RESTART_TUNE = "Restart Strata to load the tuned settings."
 MSG_RESTART_TIMING = "Restart Strata so the engine starts with them."
