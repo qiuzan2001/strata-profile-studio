@@ -286,8 +286,8 @@ class StockBackend:
         return Response(404, {"error": {"message": "not found"}}, {})
 
     @staticmethod
-    def _err(status: int, message: str, **extra) -> Response:
-        return Response(status, {"error": {"message": message}, **extra}, {})
+    def _err(code: int, message: str, **extra) -> Response:
+        return Response(code, {"error": {"message": message}, **extra}, {})
 
     def _start_run(self, query) -> Response:
         why = self.tools_reason()
