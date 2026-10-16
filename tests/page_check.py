@@ -348,6 +348,28 @@ def main():
                 record("settings: the config copy changed", sc.config.read_text() != before_cfg)
             else:
                 record("settings: a run with different settings to write", False, "no enabled Write button")
+            # the Share dialog's remote destinations: looked at, never selected (nothing is sent from the check)
+            page.goto(f"{sc.base}/#runs/{pair[1]}")
+            time.sleep(2.5)
+            page.locator(".view-head button.btn", has_text="Share").click()
+            ready = False
+            for _ in range(80):
+                ready = page.evaluate("!!document.querySelector('dialog input[value=form]') && "
+                                      "document.querySelector('dialog .share-json').textContent.includes('strata-card/1') && "
+                                      "!document.querySelector('dialog .share-why') .textContent.includes('...')")
+                if ready:
+                    time.sleep(1.5)
+                    break
+                time.sleep(0.25)
+            st = page.evaluate("""() => { const q = (v) => document.querySelector(`dialog input[value=${v}]`);
+              const why = (v) => q(v).closest('label').querySelector('.share-why').textContent.trim();
+              return {gh: q('gh').disabled, ghWhy: why('gh'), form: q('form').disabled, files: q('files').checked,
+                      button: document.querySelector('dialog .dlg-buttons button.primary').textContent}; }""")
+            record("share: the form link destination is ready", not st["form"], str(st))
+            record("share: the gh destination is ready, or the dialog says why", (not st["gh"]) or len(st["ghWhy"]) > 10, st["ghWhy"] or "ready")
+            record("share: the files on this PC are the first choice", st["files"] and st["button"] == "Write the files", st["button"])
+            page.screenshot(path=str(out / "main-share-destinations-light.png"))
+            page.keyboard.press("Escape")
             page.close()
         except StopIteration:
             pass

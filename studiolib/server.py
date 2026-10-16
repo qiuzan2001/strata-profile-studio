@@ -244,8 +244,19 @@ class StudioApp:
 
     # ------------------------------------------------------------------------------------------------ cards
     def card_facts(self) -> dict:
+        """The PC facts of a card: the engine log's probe line and the GPU's link maximum and power limit.  The GPU
+        part is static, so it is kept after the first sample: the card that the dialog shows is the card it sends."""
         log = self.engine_log.facts() if self.engine_log else None
-        gpu = self.host_monitor.doc().get("gpu") if self.host_monitor is not None else None
+        gpu = getattr(self, "_card_gpu", None)
+        if gpu is None and self.host_monitor is not None:
+            gpu = self.host_monitor.doc().get("gpu")
+            if gpu is None and getattr(self.host_monitor, "gpu", None) is not None:
+                try:
+                    gpu = self.host_monitor.gpu.sample()
+                except Exception:                        # noqa: BLE001 - no GPU tool: the card says "not reported"
+                    gpu = None
+            if gpu is not None:
+                self._card_gpu = gpu
         return cardmake.facts_from(log, gpu)
 
     def card(self, rid: str, name: str) -> dict:
@@ -625,6 +636,9 @@ def make_handler(app: StudioApp):
                     card = app.card(rid, name)
                 except cardmake.CardError as e:
                     return self._error(400, str(e))
+                if body.get("id") is not None and body.get("id") != card["id"]:
+                    return self._error(409, "The card changed since the dialog showed it. Close the dialog and open it "
+                                            "again. Nothing was sent.")
                 return self._json(200, app.gh_share.start(card))
             if path == "/api/card/files":
                 rid, name = body.get("report"), body.get("name") or ""

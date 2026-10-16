@@ -255,8 +255,11 @@ from the engine defaults. It comes as `card.html`, a 1200 x 630 image and `card.
 - **In a terminal:** `python3 studio.py --card <report folder> [--out DIR] [--name NAME]`.
 - **What a card does not have:** prompts or answers, host names, Tailscale names or IP addresses, user names or
   paths. Also no keys, no run config file, no start command of the engine and no serial numbers.
-- **Where the card goes:** in this version, nowhere. The files stay on this PC. A public site for cards
-  (`qiuzan2001/strata-cards`) comes later. The two destinations that send a card stay off until it is up.
+- **Where the card goes:** the dialog has three destinations. With `gh` logged in on this PC, **Share this card on
+  GitHub** opens an issue in `qiuzan2001/strata-cards`. The dialog then shows the card's address from the answer of
+  the site's check. **Open the filled form** opens the issue form in the browser with the card in it, and the card's address
+  comes in the issue. **Write the files** keeps the card on this PC, and nothing leaves it.
+- **The site:** https://qiuzan2001.github.io/strata-cards/ (another repository with `--cards-repo OWNER/NAME`).
 
 The PNG needs a headless Chrome, Chromium or Edge, or the Python package Pillow, on the PC. Without either, the card
 image is the SVG.

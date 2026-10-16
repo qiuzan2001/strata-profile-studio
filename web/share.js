@@ -24,7 +24,7 @@
     const err = el('p', { class: 'ctl-err', text: '' });
     const result = el('div', { class: 'share-result' });
     const input = el('input', { type: 'text', class: 'ctl-text', maxlength: 12, placeholder: 'no name', 'aria-label': 'Name on the card' });
-    let targets = null, dest = 'files', busy = false;
+    let targets = null, dest = 'files', busy = false, shownId = null;
     const dests = {};
     const mkDest = (value, label) => {
       const r = el('input', { type: 'radio', name: 'share-dest', value });
@@ -48,7 +48,7 @@
         S.setClass(d.row, 'off', !ok);
         S.setText(d.note, ok ? '' : ` (${why})`);
       };
-      set('gh', ghOk, targets ? (t.gh && t.gh.reason) || 'gh is not ready' : 'checking gh ...');
+      set('gh', ghOk, targets ? (t.gh && t.gh.reason) || 'gh is not ready' : 'asking gh ...');
       set('form', linkOk, targets ? (t.link && t.link.reason) || 'no link' : 'making the link ...');
       if ((dest === 'gh' && !ghOk) || (dest === 'form' && !linkOk)) { dest = 'files'; dests.files.r.checked = true; }
       S.setText(go, dest === 'gh' ? 'Share this card on GitHub' : dest === 'form' ? 'Open the filled form' : 'Write the files');
@@ -69,13 +69,13 @@
         busy = false; update();
       } else if (dest === 'form') {
         window.open(targets.link.url, '_blank', 'noopener');
-        say('The issue form is open in a new tab. Check it, then select Create. ',
+        say('The issue form is open in a new tab. Read it, then select Create. ',
           `The card address comes in the issue after about one minute. All cards: `, link(targets.site));
       } else {
         busy = true; update();
         say(`Opening an issue in ${targets.repo} ...`);
         try {
-          await S.api('/api/share/gh', { body });
+          await S.api('/api/share/gh', { body: Object.assign({ id: shownId }, body) });
           await follow();
         } catch (e) { say(''); S.setText(err, e.message); }
         busy = false; update();
@@ -89,7 +89,7 @@
         const issue = j.issue_url ? link(j.issue_url, `the issue ${j.issue_url.split('/').pop()}`) : null;
         if (j.state === 'done') { say('The card is on the site: ', link(j.card_url), '. Issue: ', issue); return; }
         if (j.state === 'timeout') { say(`${j.message} `, issue); return; }
-        if (j.state === 'refused') { say('The check of the cards site did not add the card. Its answer is in ', issue, `: ${j.message}`); return; }
+        if (j.state === 'refused') { say('The cards site did not add the card. Its answer is in ', issue, `: ${j.message}`); return; }
         if (j.state === 'failed') { say(''); S.setText(err, j.message); return; }
         say(`${j.message} `, issue);
         await new Promise((r) => setTimeout(r, 2000));
@@ -120,6 +120,7 @@
     const show = (doc, withImage) => {
       S.setText(size, `The JSON (${S.int(doc.bytes)} bytes)`);
       S.setText(pre, JSON.stringify(doc.card, null, 1));
+      shownId = doc.card.id;
       if (withImage && doc.image) {
         img.src = `data:image/${doc.image.type === 'png' ? 'png' : 'svg+xml'};base64,${doc.image.data}`;
         S.setText(imgNote, doc.image.type === 'png' ? '' : doc.renderer);

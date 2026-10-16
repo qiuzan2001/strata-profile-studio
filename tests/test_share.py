@@ -190,6 +190,13 @@ class Routes(unittest.TestCase):
         st, _, res = request(s, "POST", "/api/card/files", {"report": DEMO_RUN.name})
         self.assertIn("https://anna.github.io/my-cards/", (Path(res["dir"]) / "card.html").read_text())
 
+    def test_a_card_that_changed_is_not_sent(self):
+        s = self.studio()
+        st, _, err = request(s, "POST", "/api/share/gh", {"report": DEMO_RUN.name, "id": "aaaaaaaaaa"})
+        self.assertEqual(st, 409)
+        self.assertIn("Nothing was sent", err["error"]["message"])
+        self.assertEqual([c for c in s.app.gh_share.run.calls if c[1:3] == ["issue", "create"]], [])
+
     def test_read_only_sends_nothing(self):
         s = self.studio(read_only=True)
         st, _, _ = request(s, "POST", "/api/share/gh", {"report": DEMO_RUN.name})

@@ -247,10 +247,10 @@ Tell the user, in plain words:
 - How to stop the Studio: stop the `python3 studio.py` process (Linux, macOS: `kill <pid>`). Closing the browser
   does not stop it.
 
-## 12. Make a card for the user
+## 12. Make a card for the user and share it
 
-Make the result card of the newest profile report, so that the user sees what a card has. Send it nowhere in this
-step.
+Make the result card of the newest profile report, so that the user sees what a card has. Send it only after the
+user's yes.
 
 ```
 python3 studio.py --card "<Strata folder>/bench/results/<newest report folder>" --config "<config>" --out strata-card
@@ -264,8 +264,29 @@ headless Chrome, Chromium or Edge, or Pillow, also `card.png`.
 
 **Then:** show the user `strata-card/card.png` (else `card.svg`), and tell them what is not in the card. The command
 prints the list. There are no prompts or answers, no host names, Tailscale names or IP addresses, and no user names
-or paths. There are also no keys, no run config file, no start command of the engine and no serial numbers. Tell the user that the card stays
-on this PC. The **Share** button on a run in the Studio shows the same card and its JSON.
+or paths. There are also no keys, no run config file, no start command of the engine and no serial numbers. The
+**Share** button on a run in the Studio shows the same card and its JSON.
+
+Then ask one question, one time:
+
+> May I share this card on the cards site (https://qiuzan2001.github.io/strata-cards/)? Other people then see the
+> speeds of this PC.
+
+- **No:** the card stays on this PC. Tell the user where the files are.
+- **Yes, with `gh` logged in** (`gh auth status`): write the issue body into a file, then open the issue. The body has
+  the line `### Card JSON` and an empty line. Then it has the content of `card.json` in one fenced block (` ```json `
+  and ` ``` `). The title is the GPU and the model, for example `RTX 5070 Ti · swift-1.5-iq3_s`:
+
+  ```
+  gh issue create --repo qiuzan2001/strata-cards --label card --title "<GPU> · <model>" --body-file card-issue.md
+  ```
+
+  The check of the cards site answers in the issue after about one minute, with the card's address. Read it with
+  `gh issue view <number> --repo qiuzan2001/strata-cards --comments`, and give the address to the user.
+- **Yes, without `gh`:** tell the user to select **Share** on the run in the Studio. The destination is "A link that
+  opens the filled issue form in the browser". The user checks the form and selects **Create**.
+
+Open at most one card issue for this install. The install report of step 13 is a separate issue.
 
 **When the check fails:** `No card: ...` names the reason (for example, a folder without `results.json`). Tell the
 user, and go on with step 13.

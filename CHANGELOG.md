@@ -7,8 +7,13 @@ One PC measured the numbers below: RTX 5070 Ti 16 GB, Ryzen 7 5800X3D, Swift 1.5
 - **Result cards:** `studio.py --card <report>` writes the card of one profile run as `card.html`, `card.svg`,
   `card.json` and `card.png` (the PNG with a headless browser, else Pillow). Schema `strata-card/1` and a
   standard-library validator are in `cards/`.
-- **The Share dialog** on Runs and in the run detail shows the card and its JSON first. Only "the files on this PC"
-  works. The two destinations that send a card stay off until the cards site is up. `--read-only` hides it.
+- **The Share dialog** on Runs and in the run detail shows the card and its JSON first. It has three destinations.
+  - A GitHub issue in `qiuzan2001/strata-cards`, with `gh` on this PC. The dialog then shows the card's address
+    from the answer of the site's check (it waits up to 3 minutes).
+  - A link that opens the filled issue form in the browser (at most 8,000 characters).
+  - The files on this PC.
+  - `--read-only` hides the dialog, and the demo sends no card. `--cards-repo` names another repository.
+- **The cards site** is live: https://qiuzan2001.github.io/strata-cards/.
 - **The cards site** (`cards/site/`): the site builder, the issue forms, the workflow for GitHub Pages and the nine
   seed cards. They are ready to copy into the repository `qiuzan2001/strata-cards`.
 - **Wording:** the comparison verdicts and the server's messages are sentences, without semicolons.
