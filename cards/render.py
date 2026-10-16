@@ -40,7 +40,7 @@ CSS = """
 main{max-width:1200px;margin:0 auto;padding:20px 24px 40px}a{color:#1c5cab}
 .top{display:flex;align-items:center;gap:12px;padding:12px 24px;border-bottom:1px solid var(--line);background:var(--surface)}
 .brand{font-weight:700;color:var(--ink);text-decoration:none}.grow{flex:1}.muted{color:var(--ink-2)}.small{font-size:12px}.mono{font-family:var(--mono)}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;box-shadow:0 1px 2px rgba(0,0,0,.05);overflow-x:auto}
 h1{font-size:22px;margin:0 0 4px}h2{font-size:15px;margin:0 0 2px}h3{font-size:13px;margin:0 0 6px;color:var(--ink-2)}
 .sub{color:var(--ink-2);font-size:12.5px;margin-bottom:10px}
 .grid{display:grid;gap:12px}.grid>*{min-width:0}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}

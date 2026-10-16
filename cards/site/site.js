@@ -1,4 +1,4 @@
-/* Strata cards: the filters of the front page and the comparison page.  No library and no innerHTML: every node
+/* Strata cards: the filters of the front page and the comparison page.  No library and no HTML strings: each node
    is made with createElement, and text is set with textContent. */
 'use strict';
 
