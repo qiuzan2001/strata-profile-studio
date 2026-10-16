@@ -1,0 +1,3 @@
+strata serve: PCIe share: the CPU pool takes 81 us per missed expert (25.4 GB/s of expert bytes), the link 28.0 GB/s -> pcie_frac 0.35 (was 0.40; --pcie-frac N fixes it, STRATA_PCIE_FRAC_DEFAULT=old keeps the start-up rule)
+strata generate: 7 pool workers on logical processors 1,2,3,4,5,6,7, the host thread on 0 (draining too) (--host-core first)
+strata serve: WARNING: only 207 MiB of VRAM free at the start of this request (below 512 MiB): when the card is this full the driver can page GPU memory to system RAM, decode falls to a few tok/s and a window may never finish (#2065). Add --vram-reserve-mib 1024 to the config's args, or lower --max-context / --batch

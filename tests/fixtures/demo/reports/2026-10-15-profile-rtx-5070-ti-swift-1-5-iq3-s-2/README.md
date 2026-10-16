@@ -1,0 +1,54 @@
+# Where the time goes: NVIDIA GeForce RTX 5070 Ti, swift-1.5-iq3_s, 2026-10-15
+
+Measured by `tools/strata_profile.py` through the HTTP API with `STRATA_PREFILL_TIMING=1` and `STRATA_DECODE_TIMING=1` in the engine's environment; the figures are the engine's own lines.
+
+- GPU: NVIDIA GeForce RTX 5070 Ti, 16 GiB VRAM, driver 595.99.02
+- CPU: AMD Ryzen 7 5800X3D 8-Core Processor, 8 cores, 76 GiB RAM
+- OS: Linux 7.0.0-38-generic; Strata 0.1.44.1 (8cd43878), engine 0.1.44.1
+- Model: swift-1.5-iq3_s (IQ3_S), context 262,144
+- Launch: `strata --pack swift-iq3_s --native Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf --ple-gguf Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf --expert-profile expert-profile.bin --expert-cache auto --prefill auto --spec 4 --spec-min-p 0.70 --mtp rt --max-context 262144 --kv int8 --kv-resident 32768 --pcie-frac 0.35 --adapt-every 1 --adapt-swaps 160 --adapt-decay 0.97`
+
+## Prompt reads (the GPU timeline by phase)
+
+| Read | Tokens | Prompt tok/s | GPU ms | experts over PCIe | dequant | expert GEMM | attention | GDN | other | Largest phases |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 2K fresh | 2,023 | 1,749 | 983 | 21% | 15% | 25% | 9% | 22% | 9% | dequant 15%, wait copy 14%, gemm gate/up 12% |
+| 16K fresh | 16,058 | 2,954 | 5,151 | 5% | 8% | 29% | 18% | 26% | 14% | gemm gate/up 14%, gdn 12%, hc read 10% |
+| 32K (long) fresh | 32,049 | 2,988 | 10,447 | 6% | 7% | 27% | 21% | 25% | 15% | gemm gate/up 13%, gdn 12%, hc read 10% |
+
+"experts over PCIe" is the time the card waited for expert copies (wait copy, gather, host grouping); "dequant" their expansion on the card; "expert GEMM" gate/up, down and combine; "attention" the QSA projections, indexer, selection, attention and KV staging; "GDN" the linear-attention layers; "other" the hc read, router, PLE and embeddings.
+
+## Decode windows (ms per window)
+
+| Request | Context | Decode tok/s | Hit rate | PCIe share | ms/window | GPU | CPU experts | draft | adapt wait | other | tokens/window | CPU experts per layer-window | their entries |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| chat | 44 | 77.6 | 80% | 6% | 28.6 | 9.5 | 14.0 | 1.8 | 2.5 | 0.9 | 2.28 | 3.7 | 4.8 |
+| long context | 32,049 | 97.4 | 86% | 4% | 23.5 | 10.1 | 9.2 | 2.3 | 1.1 | 0.8 | 2.29 | 2.6 | 3.3 |
+| agent turns | 8,733 | 80.1 | 82% | 6% | 27.9 | 10.1 | 13.1 | 1.9 | 1.9 | 0.9 | 2.15 | 3.6 | 4.8 |
+
+"GPU" is the host's wait for the card to reach the end of the window; "CPU experts" the experts the CPU pool computed because they were not in VRAM (plan, activation quantization, jobs and the compute); "draft" the draft layer; "adapt wait" the adaptive tier's swaps; "other" commit, stage and what the line does not itemize. "Hit rate" is the VRAM share of the experts looked up; "PCIe share" the share of all routed experts the card read over PCIe instead (not in the hit rate). The tokens per second were measured with the timing switches on: for speeds, run tools/strata_bench.py.
+
+KV streaming (this request's block reads): long context 96% of 739,452 reads from VRAM, 118 MiB from RAM
+
+## Agent session, turn by turn
+
+| Turn | Prompt tokens | Reused | Read | Prompt tok/s | Decode tok/s | Hit rate | ms/window | GPU | CPU experts |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | 609 | 0 | 609 | 491 | 54 | 66% | 38.7 | 9.9 | 21.6 |
+| 1 | 3,756 | 634 | 3,122 | 1,459 | 70 | 73% | 30.7 | 9.6 | 15.7 |
+| 2 | 5,289 | 3,819 | 1,470 | 1,007 | 72 | 82% | 30.8 | 10.3 | 14.9 |
+| 3 | 8,733 | 5,353 | 3,380 | 1,554 | 82 | 85% | 22.9 | 9.8 | 9.2 |
+| 4 | 11,659 | 8,798 | 2,861 | 1,387 | 91 | 88% | 25.5 | 10.4 | 10.9 |
+| 5 | 14,594 | 11,695 | 2,899 | 1,441 | 80 | 82% | 29.5 | 10.3 | 14.6 |
+
+## Findings
+
+- The 2K read (2,023 tokens, 1,749 tok/s) is compute-bound: expert GEMM 25%, attention 9%, GDN 22% of its GPU time; the experts' copies and dequant 36%.
+- The 16K read (16,058 tokens, 2,954 tok/s) is compute-bound: expert GEMM 29%, attention 18%, GDN 26% of its GPU time; the experts' copies and dequant 13%.
+- The 32K (long) read (32,049 tokens, 2,988 tok/s) is compute-bound: expert GEMM 27%, attention 21%, GDN 25% of its GPU time; the experts' copies and dequant 13%.
+- chat (44 tokens of context, 78 tok/s, expert cache hit rate 80%): of a 28.6 ms window the card takes 9.5 ms and the experts computed on the CPU 14.0 ms (3.7 experts, 4.8 entries per layer-window): the misses of the VRAM expert cache take the larger share of the window.
+- long context (32,049 tokens of context, 97 tok/s, expert cache hit rate 86%): of a 23.5 ms window the card takes 10.1 ms, the experts computed on the CPU 9.2 ms, the draft 2.3 ms: the card takes the larger share of the window.
+- agent turns (8,733 tokens of context, 80 tok/s, expert cache hit rate 82%): of a 27.9 ms window the card takes 10.1 ms and the experts computed on the CPU 13.1 ms (3.6 experts, 4.8 entries per layer-window): the misses of the VRAM expert cache take the larger share of the window.
+- Agent turns: the expert cache hit rate per turn runs from 66% (turn 0) to 88% (turn 4).
+- Agent turns: each follow-up turn read 1,470-3,380 tokens after what the conversation cache reused.
+- A decode whose larger share is the experts computed on the CPU follows the expert cache's hit rate: the settings on that path are the cache's slots (VRAM: --max-context, --kv-resident, --vram-reserve-mib; docs/DETAILS.md, "The expert cache size is a budget"), the PCIe share and the adaptive tier (setup --calibrate measures both on this PC) and a saved expert profile (expert_profile_save).

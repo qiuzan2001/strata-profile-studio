@@ -50,6 +50,7 @@ The page and this file use these terms, and only these terms, for these things.
 | `--host-probe` | | Print each host reader of this PC (its source, whether it answers, the first raw line) and stop. See [Report your PC](../README.md#report-your-pc). |
 | `--read-only` | off | The Studio starts no profile run and no tune, and writes no file. Every POST answers 403. Use it to show the Studio to other persons. |
 | `--state PATH` | `studio-state.json` next to `studio.py` | The Studio's own file (tune records, notes). |
+| `--demo` | off | Try the Studio without Strata: a demo Strata with the recorded data of one PC (`tests/fixtures/demo`) and the Studio against it, in one process. All files go to a temporary folder. Ctrl-C stops both. |
 | `--version` | | Print the version. |
 
 ## The views in detail
@@ -303,7 +304,17 @@ The page check prints one PASS or FAIL line per check:
 - With host readings off (the state `host-off`, and each check with `--host-info off`), each view shows Strata's
   own readings.
 
+- `studio.py --demo` (the part `demo`): each view has data, the PC module moves, and Ctrl-C stops both servers.
+
 The page check never connects to port 8080 and never writes a real Strata file.
+
+**The tour GIF** of the README comes from `tests/tour.py`. It records `studio.py --demo` with Playwright, then
+makes the GIF with Pillow (or ffmpeg):
+
+```
+<venv>/bin/python tests/tour.py record --frames /tmp/tour
+python3 tests/tour.py gif --frames /tmp/tour --out docs/screenshots/tour.gif
+```
 
 **Use the Studio without a GPU:**
 

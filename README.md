@@ -6,11 +6,15 @@ helped.**
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776ab)
 ![Standard library only](https://img.shields.io/badge/dependencies-standard%20library%20only-2ea44f)
 ![MIT](https://img.shields.io/badge/licence-MIT-blue)
-![Tests](https://img.shields.io/badge/tests-185%20passing-2ea44f)
+![Tests](https://img.shields.io/badge/tests-189%20passing-2ea44f)
 ![Linux · Windows · macOS](https://img.shields.io/badge/runs%20on-Linux%20%C2%B7%20Windows%20%C2%B7%20macOS-lightgrey)
 
 <sub>The tests on hardware ran on Linux with an NVIDIA card only. Windows, macOS and AMD use the readers from the
 documentation of each tool. See [Works on](#works-on).</sub>
+
+![A 20-second tour: Now with the live PC module, then Compare, then the tune result](docs/screenshots/tour.gif)
+
+<sub>The tour shows the demo (`python3 studio.py --demo`). The same view as a still image:</sub>
 
 ![Now: the PC components and links, live](docs/screenshots/now-hero.png)
 
@@ -20,6 +24,17 @@ same PC and Python 3.11 or newer. It uses no GPU of its own, and it writes only 
 with a `.bak` copy) and its own state file.
 
 ## Install
+
+### Try it without Strata
+
+```
+git clone https://github.com/qiuzan2001/strata-profile-studio
+cd strata-profile-studio
+python3 studio.py --demo
+```
+
+Then open the address that it prints. The demo starts a demo Strata and the Studio in one process, and Ctrl-C stops
+both. The numbers come from the demo: the recorded data of one PC (RTX 5070 Ti, Ryzen 7 5800X3D), not from your PC.
 
 ### Ask an AI to install it
 

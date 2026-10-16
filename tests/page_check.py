@@ -160,6 +160,48 @@ def shoot(browser, sc, out, routes, sizes, prefix=None, settle=2.5, errors=None)
         ctx.close()
 
 
+def demo_check(browser, out):
+    """`studio.py --demo` as a visitor starts it: each view has data, no script error, Ctrl-C stops both servers."""
+    import signal
+    port = free_port(8190)
+    proc = subprocess.Popen([sys.executable, str(ROOT / "studio.py"), "--demo", "--port", str(port)],
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    try:
+        record("demo: the Studio answers", wait_http(f"http://127.0.0.1:{port}/api/state"))
+        base = f"http://127.0.0.1:{port}"
+        time.sleep(4)
+        ctx = browser.new_context(viewport={"width": 1400, "height": 900}, color_scheme="light")
+        page = ctx.new_page()
+        errs = []
+        page.on("pageerror", lambda e: errs.append(str(e)))
+        page.on("console", lambda m: errs.append(m.text) if m.type == "error" else None)
+        expect = {"now": "Limiting component", "runs": "run 7", "compare": "baseline", "tune": "Tune history",
+                  "settings": "--pcie-frac"}
+        for view, words in expect.items():
+            page.goto(f"{base}/#{view}")
+            time.sleep(3)
+            page.screenshot(path=str(out / f"demo-{view}-light.png"), full_page=True)
+            text = page.evaluate("document.querySelector('main').innerText")
+            record(f"demo {view}: has data", words.lower() in text.lower(), words)
+        page.goto(f"{base}/#now")
+        time.sleep(2)
+        seen = set()
+        for _ in range(6):
+            seen.add(page.evaluate("document.querySelector('.blk-cpu .blk-big').textContent"))
+            time.sleep(1)
+        record("demo now: the PC module moves", len(seen) > 1, f"CPU readings seen: {sorted(seen)}")
+        record("demo: no script error", not errs, "; ".join(errs[:3]))
+        ctx.close()
+    finally:
+        proc.send_signal(signal.SIGINT)
+        try:
+            proc.wait(10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        outp = proc.stdout.read() if proc.stdout else ""
+        record("demo: Ctrl-C stops both servers", "Stopped." in outp and proc.returncode == 0, f"exit {proc.returncode}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=str(ROOT / "docs" / "screenshots"))
@@ -169,7 +211,7 @@ def main():
     ap.add_argument("--engine-log", help="an engine log to read the PCIe probe from (read only)")
     ap.add_argument("--tune-secs", type=float, default=30.0)
     ap.add_argument("--quick", action="store_true", help="the main views only, light desktop")
-    ap.add_argument("--only", default="main,flow,states", help="which parts: main, flow, states")
+    ap.add_argument("--only", default="main,flow,states,demo", help="which parts: main, flow, states, demo")
     ap.add_argument("--host-info", choices=("on", "off"), default="on", help="the Studio's host readings (default on)")
     a = ap.parse_args()
     out = Path(a.out)
@@ -316,6 +358,9 @@ def main():
                 page.close()
             finally:
                 sc.close()
+
+        if "demo" in parts:
+            demo_check(browser, out)
 
         # ---- the states
         states = [("first-run", dict(state="first-run")), ("no-reports", dict(state="first-run", reports=False)),

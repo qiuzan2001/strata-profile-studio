@@ -677,11 +677,12 @@ class HostMonitor:
     SERIES = {"cpu": ("busy", "temp_c", "power_w"), "gpu": ("sm_mhz", "mem_mhz", "util", "mem_util", "power_w",
                                                             "temp_c", "fan_pct", "mem_used_mib")}
 
-    def __init__(self, host=None, gpu=None, every=1.0, idle_stop=30.0, enabled=True, platform=None):
+    def __init__(self, host=None, gpu=None, every=1.0, idle_stop=30.0, enabled=True, platform=None, off_reason=None):
         self.platform = platform or sys.platform
         self.enabled = enabled
+        self.off_reason = off_reason or "Host readings are off (--host-info off)."
         if not enabled:
-            host, gpu = NullBackend(), None
+            host, gpu = NullBackend(self.off_reason), None
         self.host = host if host is not None else _safe(lambda: backend_for(self.platform))
         self.gpu = gpu if gpu is not None else (_safe(lambda: GpuReader(self.platform)) if enabled else None)
         self.every, self.idle_stop = every, idle_stop
@@ -713,7 +714,7 @@ class HostMonitor:
             g = None
         notes = dict(h.get("notes") or {})
         if self.gpu is None:
-            notes["gpu"] = "Host readings are off (--host-info off)." if not self.enabled else "Not available."
+            notes["gpu"] = self.off_reason if not self.enabled else "Not available."
         elif g is None:
             notes["gpu"] = self.gpu.note or self.gpu.error or "No answer from the GPU tool."
         with self.lock:

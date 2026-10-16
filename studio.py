@@ -168,7 +168,8 @@ def parse_args(argv=None):
                     help="Strata's bench/results folder, where profile reports are read from (default: bench/results "
                          f"of the Strata folder of --config, else {DEFAULT_RESULTS})")
     ap.add_argument("--key", default=None, help="Strata's API key (default: $STRATA_KEY)")
-    ap.add_argument("--port", type=int, default=8090, help="the Studio's port (default %(default)s)")
+    ap.add_argument("--port", type=int, default=None, help="the Studio's port (default 8090; with --demo the first free "
+                                                          "port from 8090)")
     ap.add_argument("--host", default="127.0.0.1",
                     help="the address to listen on (default %(default)s); anything else needs --key")
     ap.add_argument("--allow-host", action="append", default=[], metavar="HOST[:PORT]",
@@ -188,12 +189,102 @@ def parse_args(argv=None):
                     help="Strata's engine log, read only (default: the config's \"log\" key, or strata-<model>.log "
                          "next to it): the PC diagram's PCIe link ceiling")
     ap.add_argument("--state", default=None, help="the state file (default studio-state.json next to studio.py)")
+    ap.add_argument("--demo", action="store_true",
+                    help="try the Studio without Strata: a demo Strata with the recorded data of one PC "
+                         "(tests/fixtures/demo) and the Studio against it, in this process; Ctrl-C stops both")
     ap.add_argument("--version", action="version", version=f"Strata Profile Studio {__version__}")
     return ap.parse_args(argv)
 
 
+DEMO_DATA = ROOT / "tests" / "fixtures" / "demo"
+DEMO_NOTE = "Demo: recorded readings of one PC (RTX 5070 Ti, Ryzen 7 5800X3D), not of this PC."
+
+
+def free_port(start: int) -> int:
+    import socket
+    for p in range(start, start + 200):
+        with socket.socket() as s:
+            try:
+                s.bind(("127.0.0.1", p))
+                return p
+            except OSError:
+                continue
+    raise SystemExit(f"No free port from {start} to {start + 199}.")
+
+
+def demo_studio(port: int, timing: Timing | None = None):
+    """The demo: a temporary folder with copies of tests/fixtures/demo, the demo Strata (tests/demo_strata.py) on a
+    free port, and a Studio against it.  Returns (studio, close); close() stops the demo Strata and removes the
+    folder.  Nothing outside the temporary folder is read or written, and no host reader runs."""
+    import json
+    import shutil
+    import tempfile
+    import types
+    sys.path.insert(0, str(ROOT / "tests"))
+    import demo_strata
+    tmp = Path(tempfile.mkdtemp(prefix="studio-demo-"))
+    cfg = json.loads((DEMO_DATA / "strata-swift-iq3_s.json").read_text(encoding="utf-8"))
+    args = cfg["args"]
+    if "--expert-profile" in args:
+        args[args.index("--expert-profile") + 1] = str(DEMO_DATA / "expert-profile.bin")
+    shutil.copy(DEMO_DATA / "strata-swift-iq3_s.log", tmp / "strata-swift-iq3_s.log")
+    shutil.copy(DEMO_DATA / "studio-state.json", tmp / "studio-state.json")
+    strata_port = free_port(8195)
+    cfg.update(log=str(tmp / "strata-swift-iq3_s.log"), port=strata_port)
+    config = tmp / "strata-swift-iq3_s.json"
+    config.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+    ns = types.SimpleNamespace(port=strata_port, results=str(tmp / "results"), seed=str(DEMO_DATA / "reports"),
+                               live=str(DEMO_DATA / "live.json"), hardware=str(DEMO_DATA / "hardware.json"),
+                               settings=str(DEMO_DATA / "settings.json"), state="decoding", tune_secs=40.0,
+                               run_secs=6.0)
+    fake, stop = demo_strata.start(ns)
+    import os                                             # the reports' recorded times (git keeps no file times)
+    for name, t in json.loads((DEMO_DATA / "report-times.json").read_text(encoding="utf-8")).items():
+        d = tmp / "results" / name
+        if d.is_dir():
+            for f in [*d.iterdir(), d]:
+                os.utime(f, (t, t))
+    try:
+        studio = Studio(fake.url, str(tmp / "results"), port=port, config=str(config),
+                        state_path=str(tmp / "studio-state.json"), timing=timing,
+                        host_monitor=HostMonitor(enabled=False, off_reason=DEMO_NOTE))
+    except BaseException:
+        stop.set()
+        fake.stop()
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
+
+    def close():
+        stop.set()
+        fake.stop()
+        shutil.rmtree(tmp, ignore_errors=True)
+    return studio, close
+
+
+def run_demo(a) -> int:
+    import signal
+    studio, close = demo_studio(a.port if a.port is not None else free_port(8090))
+
+    def on_term(*_):
+        raise KeyboardInterrupt                           # `kill`: stop as for Ctrl-C, and remove the folder
+    signal.signal(signal.SIGTERM, on_term)
+    print(f"Strata Profile Studio demo on http://127.0.0.1:{studio.port}/", flush=True)
+    print("The numbers are recorded data of one PC (RTX 5070 Ti, Ryzen 7 5800X3D, Swift 1.5 IQ3_S), not of this PC. "
+          "Press Ctrl-C to stop.", flush=True)
+    try:
+        studio.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopped.", flush=True)
+    finally:
+        close()
+    return 0
+
+
 def main(argv=None) -> int:
     a = parse_args(argv)
+    if a.demo:
+        return run_demo(a)
+    a.port = 8090 if a.port is None else a.port
     if a.host_probe:
         from studiolib.hostinfo import probe_text
         mon = HostMonitor(enabled=True)

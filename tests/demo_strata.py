@@ -165,6 +165,19 @@ def animate(fake: DemoStrata, decoding: bool, stop: threading.Event, samples=())
                 del seq[:-60]
 
 
+def start(a):
+    """The demo Strata, started: (the fake, the event that stops its animation).  `a` has the fields of main()'s
+    arguments.  studio.py --demo calls this in its own process."""
+    fake = build(a).start()
+    stop = threading.Event()
+    replay = []
+    if a.live:
+        replay = [s for s in json.loads(Path(a.live).read_text(encoding="utf-8"))["samples"]
+                  if s.get("window_ms") and not s.get("late")][-20:]
+    threading.Thread(target=animate, args=(fake, a.state == "decoding", stop, replay), daemon=True).start()
+    return fake, stop
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="A demo Strata fed with recorded data (no GPU).")
     ap.add_argument("--port", type=int, default=8195)
@@ -177,12 +190,7 @@ def main(argv=None):
     ap.add_argument("--tune-secs", type=float, default=40.0)
     ap.add_argument("--run-secs", type=float, default=6.0)
     a = ap.parse_args(argv)
-    fake = build(a).start()
-    stop = threading.Event()
-    replay = []
-    if a.live:
-        replay = [s for s in json.loads(Path(a.live).read_text())["samples"] if s.get("window_ms") and not s.get("late")][-20:]
-    threading.Thread(target=animate, args=(fake, a.state == "decoding", stop, replay), daemon=True).start()
+    fake, stop = start(a)
     if a.state == "tuning-elsewhere":                  # a tune started from Strata's own page, not the Studio
         import urllib.request
         urllib.request.urlopen(urllib.request.Request(f"{fake.url}/profile/tune", data=b"{}", method="POST",
