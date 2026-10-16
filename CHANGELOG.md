@@ -2,7 +2,7 @@
 
 One PC measured the numbers below: RTX 5070 Ti 16 GB, Ryzen 7 5800X3D, Swift 1.5 IQ3_S, 2026-10-15.
 
-## Unreleased
+## 0.1.2 (2026-10-16)
 
 - **Result cards:** `studio.py --card <report>` writes the card of one profile run as `card.html`, `card.svg`,
   `card.json` and `card.png` (the PNG with a headless browser, else Pillow). Schema `strata-card/1` and a
@@ -19,6 +19,8 @@ One PC measured the numbers below: RTX 5070 Ti 16 GB, Ryzen 7 5800X3D, Swift 1.5
 - **Wording:** the comparison verdicts and the server's messages are sentences, without semicolons.
 - A test checks the nine real reports of 2026-10-15: no host name, user name, path, key, start command or prompt
   text reaches a card.
+
+- Fixed: `--demo` on a fresh clone. The demo's state file was hidden by `.gitignore` since 0.1.0, so the demo stopped with "No such file". It is in the repository now.
 
 ## 0.1.1 (2026-10-16)
 

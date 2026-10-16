@@ -14,3 +14,4 @@ host-probe.txt
 # Page-check and demo temp folders, when made inside the repository
 pagecheck-*/
 demo-results/
+!tests/fixtures/demo/studio-state.json
