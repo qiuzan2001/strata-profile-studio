@@ -53,6 +53,7 @@ The page and this file use these terms, and only these terms, for these things.
 | `--card REPORT` | | Write the result card of one profile report (its folder, or its `results.json`). The files are `card.html`, `card.svg` and `card.json`. With a headless Chrome, Chromium or Edge, or Pillow, on the PC, also `card.png`. Then stop. The Studio sends nothing. The card has no prompts, host names, user names, paths, keys, run config or start command. The schema is `cards/schema/strata-card-1.schema.json`. |
 | `--out DIR` | `strata-card-<id>` | With `--card`: the folder for the card files. |
 | `--name NAME` | none | With `--card`: an optional name on the card, at most 12 characters (letters, digits, space, `-` and `_`). |
+| `--strata-root DIR` | the folder of `--config` | Strata's folder, with `setup.py` and `tools/`. On a Strata build without the `/profile` routes (0.1.44.1 as released), the Studio runs **Run a profile** and **Tune this PC** itself from there. |
 | `--demo` | off | Try the Studio without Strata: a demo Strata with the recorded data of one PC (`tests/fixtures/demo`) and the Studio against it, in one process. All files go to a temporary folder. Ctrl-C stops both. |
 | `--version` | | Print the version. |
 

@@ -69,14 +69,18 @@ class StrataClient:
         self.prefix = u.path.rstrip("/")
         self._key = key or None
         self.timing = timing
+        self.stock = None          # stock mode (studiolib/stock.py): it answers the /profile calls of a release build
 
     @property
     def has_key(self) -> bool:
         return bool(self._key)
 
     def call(self, route: str, *, query: dict | None = None, body: dict | None = None,
-             timeout: float | None = None) -> Response:
-        """One call.  Raises StrataError for unreachable (connect error, timeout), key_needed (401), too_large."""
+             timeout: float | None = None, raw: bool = False) -> Response:
+        """One call.  Raises StrataError for unreachable (connect error, timeout), key_needed (401), too_large.
+        In stock mode the Studio answers the /profile calls itself (`raw`: ask Strata all the same)."""
+        if self.stock is not None and not raw and route in ("last", "status", "run", "tune"):
+            return self.stock.call(route, query, body)
         method, path, tmo = ROUTES[route]
         if timeout is None:
             timeout = getattr(self.timing, tmo)

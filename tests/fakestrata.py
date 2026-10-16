@@ -100,6 +100,7 @@ class FakeStrata:
                  tune_busy_409s=0, host="127.0.0.1", port=0, status_changes=True, run_fail_on=()):
         self.results_dir = Path(results_dir)
         self.key, self.profile, self.history_on, self.settings_on = key, profile, history, settings
+        self.unload_answer = "unloaded"              # POST /unload: unloaded | not loaded | busy | unsupported
         self.tune_available, self.tune_outcome = tune_available, tune_outcome
         self.reload_503s, self.report_inside = reload_503s, report_inside
         self.run_secs, self.tune_secs, self.tune_busy_409s = run_secs, tune_secs, tune_busy_409s
@@ -219,10 +220,23 @@ class FakeStrata:
                     return fake.post_tune(self)
                 if path == "/v1/chat/completions":
                     return fake.post_chat(self)
-                if path == "/unload":
+                if path in ("/unload", "/load"):            # Strata 0.1.44.1: JSON only, and no foreign Origin
+                    if not self.headers.get("Content-Type", "").startswith("application/json"):
+                        return self._reply(415, {"error": {"message": "send application/json"}})
+                    origin = (self.headers.get("Origin") or "").rstrip("/")
+                    if origin and origin.split("://", 1)[-1] != self.headers.get("Host", ""):
+                        return self._reply(403, {"error": {"message": "the model can be loaded or unloaded only from "
+                                                                      "Strata's own page"}})
                     with fake.lock:
-                        fake.loaded = False
-                    return self._reply(200, {"status": "unloaded"})
+                        if path == "/load":
+                            fake.loaded = True
+                            return self._reply(200, {"status": "loaded"})
+                        answer = fake.unload_answer
+                        if answer == "busy":
+                            return self._reply(409, {"status": "busy"})
+                        if answer in ("unloaded", "not loaded"):
+                            fake.loaded = False
+                    return self._reply(200, {"status": answer})
                 self._reply(404, {"error": {"message": "not found"}})
 
         self.httpd = http.server.ThreadingHTTPServer((host, port), H)

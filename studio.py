@@ -85,7 +85,7 @@ class Studio:
     def __init__(self, strata: str, results: str, key: str | None = None, host: str = "127.0.0.1", port: int = 8090,
                  config: str | None = None, state_path: str | None = None, timing: Timing | None = None,
                  allow_hosts=(), engine_log: str | None = None, read_only: bool = False, host_monitor=None,
-                 defaults_tool=None, host_info: bool = True):
+                 defaults_tool=None, host_info: bool = True, strata_root: str | None = None, stock_popen=None):
         if not is_loopback(host) and not key:
             raise SystemExit("Refusing to listen on a non-loopback address without a key: add --key KEY "
                              "(or STRATA_KEY=KEY). The same key protects the Studio and is sent to Strata.")
@@ -105,6 +105,12 @@ class Studio:
         # the bearer is required wherever the Studio can be reached from beyond this PC: a non-loopback bind, or
         # names let in with --allow-host (a reverse proxy) when a key was given
         studio_key = key if (not is_loopback(host) or allow_hosts) else None
+        from studiolib.stock import StockBackend
+        stock_kw = {"popen": stock_popen} if stock_popen else {}
+        self.stock = StockBackend(self.client, self.results, config_path=config,
+                                  engine_log=engine_log or default_engine_log(config), explicit_root=strata_root,
+                                  key=key, **stock_kw)
+        self.poller.stock_backend = self.stock
         self.app = StudioApp(strata_url=public_url(strata), results_dir=self.results, config_path=config, key=key,
                              studio_key=studio_key, host=host, port=port, client=self.client, poller=self.poller,
                              flow=self.flow, reports=self.reports, state=self.state, web_dir=ROOT / "web",
@@ -112,7 +118,8 @@ class Studio:
                              engine_log=EngineLog(engine_log or default_engine_log(config)), read_only=read_only,
                              host_monitor=host_monitor or HostMonitor(enabled=host_info), profiles=Profiles(config) if config else None,
                              defaults_run=DefaultsRun(self.client, self.poller, self.results, config, key,
-                                                      tool=defaults_tool) if config else None)
+                                                      tool=defaults_tool) if config else None,
+                             stock=self.stock)
         try:
             self.server = StudioServer(host, port, make_handler(self.app))
         except OSError as e:
@@ -146,6 +153,7 @@ class Studio:
 
     def stop(self):
         self._flusher.set()
+        self.stock.stop()
         if self.app.host_monitor:
             self.app.host_monitor.stop()
         self.flow.abandon()
@@ -196,6 +204,10 @@ def parse_args(argv=None):
     ap.add_argument("--out", metavar="DIR", help="with --card: the folder for the files (default strata-card-<id>)")
     ap.add_argument("--name", default="", help="with --card: an optional name on the card (at most 12 characters: "
                                                 "letters, digits, space, - and _)")
+    ap.add_argument("--strata-root", metavar="DIR",
+                    help="Strata's folder (with setup.py and tools/), for a Strata build without the /profile routes "
+                         "(0.1.44.1 as released): the Studio runs the profile and the tune itself from there "
+                         "(default: the folder of --config)")
     ap.add_argument("--demo", action="store_true",
                     help="try the Studio without Strata: a demo Strata with the recorded data of one PC "
                          "(tests/fixtures/demo) and the Studio against it, in this process; Ctrl-C stops both")
@@ -335,7 +347,7 @@ def main(argv=None) -> int:
     key = a.key or os.environ.get("STRATA_KEY") or None
     studio = Studio(a.strata, a.results, key=key, host=a.host, port=a.port, config=a.config, state_path=a.state,
                     allow_hosts=a.allow_host, engine_log=a.engine_log, read_only=a.read_only,
-                    host_info=a.host_info == "on")
+                    host_info=a.host_info == "on", strata_root=a.strata_root)
     shown = "[" + a.host + "]" if ":" in a.host else a.host
     print(f"Strata Profile Studio on http://{shown}:{studio.port}/ (Strata: {studio.app.strata_url}, "
           f"reports: {studio.results})", flush=True)

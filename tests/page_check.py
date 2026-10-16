@@ -87,7 +87,8 @@ def get(url):
 class Scenario:
     """A demo Strata (unless `unreachable`) and a Studio, in their own temp folder."""
 
-    def __init__(self, a, name, state="ok", reports=True, unreachable=False, read_only=False, host_info=None):
+    def __init__(self, a, name, state="ok", reports=True, unreachable=False, read_only=False, host_info=None,
+                 routes_root=False, stock_root=False):
         self.name = name
         self.dir = Path(tempfile.mkdtemp(prefix=f"pagecheck-{name}-"))
         self.results = self.dir / "results"
@@ -122,6 +123,19 @@ class Scenario:
         if read_only:
             cmd.append("--read-only")
         cmd += ["--host-info", host_info or a.host_info]
+        if routes_root:                                   # a Strata build with the /profile routes: 404 = profiling off
+            r = self.dir / "strata-with-routes"
+            (r / "tools").mkdir(parents=True)
+            (r / "serve").mkdir()
+            (r / "tools" / "strata_bench.py").write_text("")
+            (r / "serve" / "profile_page.py").write_text("")
+            cmd += ["--strata-root", str(r)]
+        if stock_root:                                    # a release build (0.1.44.1): tools/, no profile_page.py
+            r = self.dir / "strata-stock"
+            (r / "tools").mkdir(parents=True)
+            (r / "tools" / "strata_bench.py").write_text("")
+            (r / "setup.py").write_text("")
+            cmd += ["--strata-root", str(r)]
         self.procs.append(subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
         wait_http(f"http://127.0.0.1:{self.port}/api/state")
         self.base = f"http://127.0.0.1:{self.port}"
@@ -386,7 +400,8 @@ def main():
 
         # ---- the states
         states = [("first-run", dict(state="first-run")), ("no-reports", dict(state="first-run", reports=False)),
-                  ("profile-off", dict(state="profile-off")), ("key", dict(state="key")),
+                  ("profile-off", dict(state="profile-off", routes_root=True)), ("stock", dict(state="profile-off", stock_root=True)),
+                  ("key", dict(state="key")),
                   ("unloaded", dict(state="unloaded")), ("unreachable", dict(unreachable=True)),
                   ("tuning-elsewhere", dict(state="tuning-elsewhere")), ("read-only", dict(read_only=True)),
                   ("host-off", dict(state="decoding", host_info="off"))]
@@ -408,7 +423,8 @@ def main():
                 expect = {"first-run": "No requests since Strata started", "no-reports": "No requests since Strata started",
                           "profile-off": "Profiling is off", "key": "Strata needs an API key", "unloaded": "The model is not loaded",
                           "unreachable": "Strata does not answer", "tuning-elsewhere": "Strata runs a tune",
-                          "read-only": "read-only", "host-off": "Host readings are off"}[name]
+                          "read-only": "read-only", "host-off": "Host readings are off",
+                          "stock": "This Strata build has no profile routes"}[name]
                 if name == "read-only":
                     text += page.evaluate("document.querySelector('header').innerText")
                     page.goto(f"{sc.base}/#runs")
@@ -417,6 +433,15 @@ def main():
                     page.goto(f"{sc.base}/#now")
                     time.sleep(1)
                 record(f"state {name}: says so on the page", expect.lower() in text.lower(), expect)
+                if name == "stock":
+                    record("stock: no \"profile\": true advice on Now", "\"profile\": true" not in text)
+                    page.goto(f"{sc.base}/#settings")
+                    time.sleep(3)
+                    st_text = page.evaluate("document.querySelector('main').innerText")
+                    record("stock: Settings shows the Timing lines block", "Timing lines" in st_text and "STRATA_DECODE_TIMING" in st_text)
+                    page.screenshot(path=str(out / "stock-settings-light.png"), full_page=True)
+                    page.goto(f"{sc.base}/#now")
+                    time.sleep(1)
                 if name == "host-off":
                     host = get(f"{sc.base}/api/host")
                     record("host-off: /api/host has no reading", host["cpu"] is None and host["gpu"] is None and not host["enabled"])

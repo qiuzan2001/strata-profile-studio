@@ -41,7 +41,7 @@ class StudioApp:
 
     def __init__(self, *, strata_url, results_dir, config_path, key, studio_key, host, port, client, poller,
                  flow, reports, state, web_dir, started_at, allow_hosts=(), engine_log=None, read_only=False, host_monitor=None, profiles=None,
-                 defaults_run=None):
+                 defaults_run=None, stock=None):
         self.strata_url, self.results_dir, self.config_path = strata_url, results_dir, config_path
         self.key_set = bool(key)
         self.studio_key = studio_key                   # None: no bearer needed on /api/
@@ -54,6 +54,7 @@ class StudioApp:
         self.read_only = bool(read_only)
         self.host_monitor, self.profiles, self.defaults_run = host_monitor, profiles, defaults_run
         self._card_png = {}
+        self.stock = stock                             # studiolib.stock.StockBackend: a Strata without /profile routes
 
     @staticmethod
     def split_host(header: str) -> tuple[str, str | None]:
@@ -504,6 +505,10 @@ def make_handler(app: StudioApp):
                                                         (query.get("image") or ["1"])[0] != "0"))
                 except cardmake.CardError as e:
                     return self._error(400, str(e))
+            if path == "/api/stock":
+                if app.stock is None:
+                    return self._json(200, {"active": False})
+                return self._json(200, app.stock.doc(app.poller.stock))
             self._error(404, "Not found.")
 
         def _report(self, rid: str):
@@ -603,6 +608,16 @@ def make_handler(app: StudioApp):
                     return self._json(200, app.card_files(rid, name))
                 except cardmake.CardError as e:
                     return self._error(400, str(e))
+            if path == "/api/stock/timing":
+                if app.stock is None or not app.config_path:
+                    return self._error(412, "The Studio needs --config to write the timing switches.")
+                from .stock import MSG_RESTART_TIMING, TIMING_ENV
+                try:
+                    res = configwrite.merge_env(app.config_path, TIMING_ENV, body.get("sha"), app.busy_reason())
+                except configwrite.ConfigWriteError as e:
+                    return self._error(e.status, e.message)
+                res["message"] = MSG_RESTART_TIMING
+                return self._json(200, res)
             self._error(404, "Not found.")
 
         def _run_profile(self, body: dict):

@@ -663,3 +663,8 @@ dialog.share { width: min(1100px, calc(100vw - 32px)); max-width: none; }
 .share-result { font-size: 13px; color: var(--good); overflow-wrap: anywhere; }
 .share-grid h3 { font-size: 13px; margin: 10px 0 4px; }
 @media (max-width: 760px) { .share-grid { grid-template-columns: 1fr; } }
+
+/* stock mode: the Timing lines block of Settings */
+.stock-table { border-collapse: collapse; font-size: 13px; margin-bottom: 8px; }
+.stock-table th { text-align: left; font-weight: 600; color: var(--ink-2); padding: 3px 14px 3px 0; white-space: nowrap; vertical-align: top; }
+.stock-table td { padding: 3px 0; overflow-wrap: anywhere; }

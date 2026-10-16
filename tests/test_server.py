@@ -40,7 +40,7 @@ class Routes(Base):
         self.assertEqual(set(doc["studio"]), {"version", "started_at", "strata_url", "results_dir", "results_dir_exists",
                                               "config_path", "key_set", "auth_required", "read_only"})
         self.assertEqual(set(doc["strata"]), {"status", "checked_at", "message", "model", "loaded", "max_context",
-                                              "api_key", "profile", "routes", "run", "tune"})
+                                              "api_key", "profile", "routes", "stock", "run", "tune"})
         self.assertEqual(set(doc["strata"]["tune"]), {"available", "unavailable_reason", "state", "elapsed_s",
                                                       "started_by_studio"})
         self.assertEqual(set(doc["strata"]["run"]), {"state", "elapsed_s"})
@@ -404,7 +404,7 @@ class LiveDedupe(Base):
         self.fake.metrics_requests = [{"time": 1000.0, "duration_s": 3.0, "prompt_tokens": 70, "reused": 0,
                                        "prompt_read": 70, "prompt_ms": 140.0, "decode_ms": 500.0,
                                        "decode_tok_s": 61.2, "output_tokens": 30, "hit_rate": 0.7, "pcie_share": 0.1}]
-        s = start_studio(self, self.fake, self.results, state_path=self.tmp / "m.json")
+        s = start_studio(self, self.fake, self.results, state_path=self.tmp / "m.json", strata_root=support.routes_root(self))
         wait_for(lambda: s.poller.ring, what="a metrics sample")
         x = s.poller.ring[0]
         self.assertEqual((x["source"], x["prompt_tok_s"], x["decode_tok_s"], x["generated"], x["window_ms"]),

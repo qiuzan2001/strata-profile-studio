@@ -246,6 +246,7 @@
       const bits = [s.model || 'Strata'];
       bits.push(s.loaded === false ? 'model unloaded' : 'loaded');
       if (s.profile === false) { cls = 'warn'; bits.push('profiling off'); }
+      if (s.stock) bits.push('stock Strata');
       if (s.tune && s.tune.state === 'running') { cls = 'busy'; bits.push('tuning'); }
       else if (s.run && s.run.state === 'running') { cls = 'busy'; bits.push('profiling'); }
       if (s.loaded === false && cls === 'ok') cls = 'idle';
@@ -276,6 +277,8 @@
       items.push(['warn', 'Strata needs an API key.', 'Start the Studio again with STRATA_KEY=<key> python3 studio.py. Runs, Compare and the settings file work without the key.', [['Open Runs', () => S.go('#runs')]]]);
     } else if (s.status === 'profile_off') {
       items.push(['warn', 'Profiling is off in Strata. The Studio shows speeds, but not the time per component.', `Add "profile": true to ${cfg} and start Strata again.`, [['Settings', () => S.go('#settings')]]]);
+    } else if (s.status === 'stock') {
+      items.push(['idle', s.message || 'This Strata build has no profile routes.', '', A.route.view === 'settings' ? null : [['Settings', () => S.go('#settings')]]]);
     }
     if (s.status === 'ok' && s.message) items.push(['warn', s.message, '', null]);
     if (A.state && s.status !== 'unreachable' && s.loaded === false && !(s.tune && s.tune.state === 'running'))

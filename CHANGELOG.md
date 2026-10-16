@@ -15,6 +15,20 @@ One PC measured the numbers below: RTX 5070 Ti 16 GB, Ryzen 7 5800X3D, Swift 1.5
 - A test checks the nine real reports of 2026-10-15: no host name, user name, path, key, start command or prompt
   text reaches a card.
 
+## 0.1.1 (2026-10-16)
+
+- **Stock mode: Strata 0.1.44.1 as released.** That build has no `/profile` routes and no `tools/strata_profile.py`.
+  Two users reported that the Studio then said "Profiling is off" and that `"profile": true` did nothing. Now a 404
+  of `/profile/status` is stock mode (except on a build with the routes), and the Studio does the work itself.
+  - The last request's breakdown comes from the engine log's timing lines.
+  - **Timing lines** on Settings adds the two switches to the run config's `"env"`, with a `.bak` copy.
+  - **Run a profile** runs a copy of Strata's profile tool (MIT) against the running server.
+  - **Tune this PC** unloads the model and checks that `/health` says it is not loaded. Then it runs setup's
+    calibration for the run config and asks for a restart of Strata.
+- The comparison of a release build's runs and the Compare page work as before.
+- `--strata-root DIR`: Strata's folder, when the run config is not in it.
+- Works on: a community report of Windows 11 with an RTX 5060 Ti (Strata #2453).
+
 ## 0.1.0 (2026-10-15)
 
 The first release. It has the five rounds below. It also has three items for people without Strata.

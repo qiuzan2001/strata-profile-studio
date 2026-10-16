@@ -79,12 +79,23 @@ def request(studio_or_port, method: str, path: str, body=None, headers=None, raw
         conn.close()
 
 
+def routes_root(testcase) -> Path:
+    """A Strata folder of a build with the /profile routes (PR #2661): there /profile/status 404 means profiling is
+    off, not stock mode."""
+    d = tmpdir(testcase) / "strata-with-routes"
+    (d / "tools").mkdir(parents=True)
+    (d / "serve").mkdir()
+    (d / "tools" / "strata_bench.py").write_text("")
+    (d / "serve" / "profile_page.py").write_text("")
+    return d
+
+
 def start_studio(testcase, fake, results: Path, *, key=None, host="127.0.0.1", state_path=None, config=None,
-                 timing=None, strata_url=None):
+                 timing=None, strata_url=None, strata_root=None):
     import studio
     s = studio.Studio(strata_url or fake.url, str(results), key=key, host=host, port=0, config=config,
                       state_path=str(state_path or (results.parent / (results.name + "-state.json"))),
-                      timing=timing or fast_timing())
+                      timing=timing or fast_timing(), strata_root=strata_root)
     s.start()
     testcase.addCleanup(s.stop)
     return s

@@ -247,3 +247,26 @@ def apply_edits(config_path, edits: list, sha: str, busy_reason: str | None = No
     if not changes:
         raise ConfigWriteError(400, "The file already has these values. Nothing was written.")
     return _write(config_path, raw, cfg, changes)
+
+
+def merge_env(config_path, add: dict, sha: str | None = None, busy_reason: str | None = None) -> dict:
+    """Stock mode's timing switches: `add` merged into the run config's "env" (setup writes an "env" of its own for
+    some models: those keys stay).  Written as the other writes: the pack rule first, a .bak copy."""
+    if busy_reason:
+        raise ConfigWriteError(409, busy_reason)
+    raw, cfg = _read(config_path)
+    if sha is not None and sha != hashlib.sha256(raw).hexdigest():
+        raise ConfigWriteError(409, "The config file changed since the page read it. Read it again before writing.")
+    env = cfg.get("env")
+    if env is not None and not isinstance(env, dict):
+        raise ConfigWriteError(412, "The config's \"env\" is not a JSON object. The Studio does not change it.")
+    env = dict(env or {})
+    changes = []
+    for k, v in add.items():
+        if env.get(k) != v:
+            changes.append({"flag": k, "from": env.get(k), "to": v})
+            env[k] = v
+    if not changes:
+        raise ConfigWriteError(400, "The file already has these values. Nothing was written.")
+    cfg["env"] = env
+    return _write(config_path, raw, cfg, changes)

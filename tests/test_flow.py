@@ -230,7 +230,7 @@ class Failures(FlowCase):
 
     def test_profile_off_is_a_412_and_the_state_says_so(self):
         self.make(profile=False)
-        s = start_studio(self, self.fake, self.results)
+        s = start_studio(self, self.fake, self.results, strata_root=support.routes_root(self))
         wait_for(lambda: s.poller.status == "profile_off", what="profile_off")
         status, _, doc = request(s, "POST", "/api/tune-flow", {"long": None})
         self.assertEqual(status, 412)
