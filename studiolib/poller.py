@@ -13,6 +13,7 @@ from pathlib import Path
 
 from . import requests as requests_mod, settings as settings_mod
 from .requests import REQUEST_KEYS, kind_of
+from .stock import MSG_STOCK
 from .strata import StrataError
 
 LIVE_MAX = 300
@@ -55,12 +56,14 @@ class Poller:
         self._stop = threading.Event()
         self._thread = None
         # reachability
-        self.status = "unreachable"                  # unreachable | key_needed | profile_off | ok
+        self.status = "unreachable"                  # unreachable | key_needed | profile_off | stock | ok
         self.message = None
         self.checked_at = None
         self.health: dict = {}
         self.key_flag = False                        # a 401 came back and no good answer since
         self.profile: bool | None = None             # None: not known yet
+        self.stock = False                           # stock mode: no /profile routes, the Studio does their work
+        self.stock_backend = None                    # studiolib.stock.StockBackend (set by studio.py)
         self.routes = {"history": False, "settings": False}
         self.status_raw: dict | None = None
         self.status_at = None
@@ -154,6 +157,8 @@ class Poller:
                 self.status, self.message = "key_needed", MSG_KEY
             elif self.profile is False:
                 self.status, self.message = "profile_off", MSG_PROFILE_OFF
+            elif self.stock:
+                self.status, self.message = "stock", " ".join(x for x in (MSG_STOCK, self.mismatch) if x)
             else:
                 self.status, self.message = "ok", self.mismatch
 
@@ -213,23 +218,33 @@ class Poller:
                 self._derive()
 
     def _probe(self):
-        """Which routes does this Strata have?  /profile/status 404 means profiling is off."""
+        """Which routes does this Strata have?  /profile/status 404: stock mode on a release build (Strata 0.1.44.1
+        has no /profile routes), or profiling off on a build that has them (serve/profile_page.py beside it)."""
         try:
-            r = self.client.call("status")
+            r = self.client.call("status", raw=True)
         except StrataError as e:
             if e.kind == "key_needed":
                 self._auth_failed()
             return
         self._auth_ok()
         if r.status == 404:
+            sb = self.stock_backend
+            stock = sb is not None and not sb.routes_build()
             with self.lock:
-                self.profile = False
+                self.stock = stock
+                self.client.stock = sb if stock else None
+                self.profile = None if stock else False
                 self.routes = {"history": False, "settings": False}
                 self.status_raw = None
                 self._derive()
+            if stock:
+                self._note_status(sb.call("status").data)
             return
         if r.status != 200 or not isinstance(r.data, dict):
             return
+        with self.lock:
+            self.stock = False
+            self.client.stock = None
         self._note_status(r.data)
         routes = {}
         for name in ("history", "settings"):
@@ -325,7 +340,13 @@ class Poller:
                 del self._by_stamp[old["_stamp"]]
         return s
 
+    def _stock_without_timing(self) -> bool:
+        """Stock mode and an engine log without timing lines: Live comes from /metrics' requests."""
+        return self.stock and self.stock_backend is not None and not self.stock_backend.log_has_timing()
+
     def _fetch_last(self):
+        if self._stock_without_timing():
+            return
         try:
             r = self.client.call("last")
         except StrataError as e:
@@ -407,7 +428,7 @@ class Poller:
             if isinstance(r.data.get("engine"), dict):
                 self.engine, self.engine_at = r.data["engine"], self.clock()
             self._note_hardware(r.data)
-            if self.profile:
+            if self.profile and not self._stock_without_timing():
                 return                                   # profile on: Live comes from /profile/last
             reqs = [x for x in r.data.get("requests") or [] if isinstance(x, dict)]
             for x in reversed(reqs):                     # Strata lists the newest first; the ring wants oldest first
@@ -562,7 +583,7 @@ class Poller:
                 "status": self.status, "checked_at": self.checked_at, "message": self.message,
                 "model": self.health.get("model"), "loaded": self.health.get("loaded"),
                 "max_context": self.health.get("max_context"), "api_key": self.health.get("api_key"),
-                "profile": self.profile, "routes": dict(self.routes),
+                "profile": self.profile, "routes": dict(self.routes), "stock": self.stock,
                 "run": {"state": raw.get("state") or "idle", "elapsed_s": raw.get("elapsed_s")},
                 "tune": {"available": avail, "unavailable_reason": reason, "state": tune_d.get("state") or "idle",
                          "elapsed_s": tune_d.get("elapsed_s"),

@@ -16,6 +16,7 @@ from .calibparse import same_value
 from .poller import MSG_KEY, MSG_MISMATCH, MSG_PROFILE_OFF
 from .reports import arg_value
 from .settings import read_config
+from .stock import MSG_RESTART_TUNE
 from .strata import StrataError
 
 STAGES = (("check", "Check Strata"), ("before", "Profile before"), ("tune", "Tune"), ("reload", "Load the model"),
@@ -276,12 +277,23 @@ class Flow:
             self._absorb_tune_lines(tune)
             self._finish_tune(tune)
         tune_failed = self.rec["_cap"].get("tune_failed")
+        if self.poller.stock and not tune_failed:
+            self._stock_restart()
         self._stage_reload()
         if tune_failed:
             self._skip_rest("reload")
             raise _Stop("failed", "tune", tune_failed)
         self._stage_profile("after")
         self._stage_compare()
+
+    def _stock_restart(self):
+        """Stock mode: a release server reads its run config at start, and the Studio cannot restart a server that it
+        did not start.  The flow stops here, and "Run the profile after again" runs stages 5 and 6 after the
+        restart of Strata."""
+        with self.lock:
+            st = self._stage("reload")
+            st.update(state="skipped", message=MSG_RESTART_TUNE)
+        raise _Stop("failed", "after", f"{MSG_RESTART_TUNE} Then select Run the profile after again.")
 
     def _run_after_only(self):
         self._stage_profile("after")
