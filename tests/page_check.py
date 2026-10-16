@@ -88,7 +88,7 @@ class Scenario:
     """A demo Strata (unless `unreachable`) and a Studio, in their own temp folder."""
 
     def __init__(self, a, name, state="ok", reports=True, unreachable=False, read_only=False, host_info=None,
-                 routes_root=False):
+                 routes_root=False, stock_root=False):
         self.name = name
         self.dir = Path(tempfile.mkdtemp(prefix=f"pagecheck-{name}-"))
         self.results = self.dir / "results"
@@ -129,6 +129,12 @@ class Scenario:
             (r / "serve").mkdir()
             (r / "tools" / "strata_bench.py").write_text("")
             (r / "serve" / "profile_page.py").write_text("")
+            cmd += ["--strata-root", str(r)]
+        if stock_root:                                    # a release build (0.1.44.1): tools/, no profile_page.py
+            r = self.dir / "strata-stock"
+            (r / "tools").mkdir(parents=True)
+            (r / "tools" / "strata_bench.py").write_text("")
+            (r / "setup.py").write_text("")
             cmd += ["--strata-root", str(r)]
         self.procs.append(subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
         wait_http(f"http://127.0.0.1:{self.port}/api/state")
@@ -372,7 +378,7 @@ def main():
 
         # ---- the states
         states = [("first-run", dict(state="first-run")), ("no-reports", dict(state="first-run", reports=False)),
-                  ("profile-off", dict(state="profile-off", routes_root=True)), ("stock", dict(state="profile-off")),
+                  ("profile-off", dict(state="profile-off", routes_root=True)), ("stock", dict(state="profile-off", stock_root=True)),
                   ("key", dict(state="key")),
                   ("unloaded", dict(state="unloaded")), ("unreachable", dict(unreachable=True)),
                   ("tuning-elsewhere", dict(state="tuning-elsewhere")), ("read-only", dict(read_only=True)),
