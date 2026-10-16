@@ -78,9 +78,10 @@ def env_state(config_path) -> dict:
 
 def log_state(path) -> dict:
     """Whether the Studio can read the engine log, and whether it has a `strata decode timing:` line."""
-    out = {"path": str(path) if path else None, "readable": False, "timing_lines": False}
+    out = {"path": str(path) if path else None, "exists": False, "readable": False, "timing_lines": False}
     if not path:
         return out
+    out["exists"] = os.path.exists(path)
     try:
         size = os.path.getsize(path)
         with open(path, "rb") as f:
@@ -252,7 +253,9 @@ class StockBackend:
             if not line.startswith("Report: "):
                 continue
             readme = Path(line[len("Report: "):].rsplit(" (home folders", 1)[0].strip())
-            readme = readme.resolve() if readme.is_absolute() else (parent / readme).resolve()
+            if not readme.is_absolute():                   # the tool prints it from its own folder: Strata's
+                readme = (self.root()[0] or parent) / readme
+            readme = readme.resolve()
             if readme.name != "README.md" or readme.parent.parent != parent:
                 return None
             try:

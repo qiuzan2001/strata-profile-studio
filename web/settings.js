@@ -129,13 +129,15 @@
     const rows = [
       ['STRATA_DECODE_TIMING in "env"', val('STRATA_DECODE_TIMING')],
       ['STRATA_PREFILL_TIMING in "env"', val('STRATA_PREFILL_TIMING')],
-      ['Engine log', log.path ? `${log.path} · ${log.readable ? 'the Studio can read it' : 'the Studio cannot read it'}` : 'not known (start the Studio with --config or --engine-log)'],
+      ['Engine log', log.path ? `${log.path} · ${log.readable ? 'the Studio can read it' : log.exists ? 'the Studio cannot read it' : 'no file there'}` : 'not known (start the Studio with --config or --engine-log)'],
       ['Timing lines in the log', !log.readable ? '–' : log.timing_lines ? 'yes' : 'no timing line yet'],
       ["Strata's tools/ (for a profile run)", d.strata_root || d.tools || '–'],
       ['Tune', d.tune || 'available: the Studio unloads the model, then runs setup.calibrate_config'],
     ];
     const notes = [];
-    if (log.path && !log.readable) {
+    if (log.path && !log.exists) {
+      notes.push(`There is no engine log at ${log.path}. Strata writes it when its engine starts. When Strata runs in another container or on another PC, the Studio cannot read it. Then the Studio shows the speeds from /metrics and the API, and runs without the breakdown columns.`);
+    } else if (log.path && !log.readable) {
       notes.push(`The Studio cannot read the engine log at ${log.path}. Strata can run in another container or on another PC. The Studio still shows the speeds from /metrics and the API, and runs without the breakdown columns.`);
     } else if (!d.env_complete) {
       notes.push('The engine writes its timing lines only when the run config has the two switches. Add them, then restart Strata so the engine starts with them.');
