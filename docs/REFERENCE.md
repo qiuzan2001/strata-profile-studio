@@ -50,7 +50,7 @@ The page and this file use these terms, and only these terms, for these things.
 | `--host-probe` | | Print each host reader of this PC (its source, whether it answers, the first raw line) and stop. See [Report your PC](../README.md#report-your-pc). |
 | `--read-only` | off | The Studio starts no profile run and no tune, and writes no file. Every POST answers 403. Use it to show the Studio to other persons. |
 | `--state PATH` | `studio-state.json` next to `studio.py` | The Studio's own file (tune records, notes). |
-| `--strata-root DIR` | the folder of `--config` | Strata's folder, with `setup.py` and `tools/`. A Strata build without the `/profile` routes (0.1.44.1 as released) needs it for **Run a profile** and **Tune this PC**: the Studio runs them itself from there. |
+| `--strata-root DIR` | the folder of `--config` | Strata's folder, with `setup.py` and `tools/`. On a Strata build without the `/profile` routes (0.1.44.1 as released), the Studio runs **Run a profile** and **Tune this PC** itself from there. |
 | `--demo` | off | Try the Studio without Strata: a demo Strata with the recorded data of one PC (`tests/fixtures/demo`) and the Studio against it, in one process. All files go to a temporary folder. Ctrl-C stops both. |
 | `--version` | | Print the version. |
 
