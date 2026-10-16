@@ -668,3 +668,5 @@ dialog.share { width: min(1100px, calc(100vw - 32px)); max-width: none; }
 .stock-table { border-collapse: collapse; font-size: 13px; margin-bottom: 8px; }
 .stock-table th { text-align: left; font-weight: 600; color: var(--ink-2); padding: 3px 14px 3px 0; white-space: nowrap; vertical-align: top; }
 .stock-table td { padding: 3px 0; overflow-wrap: anywhere; }
+.share-why { color: var(--ink-3); }
+.share-result a { color: var(--accent); }

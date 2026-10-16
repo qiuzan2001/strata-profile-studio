@@ -30,6 +30,13 @@ EXCLUDED = (
 INSTALL_LINE = ("Install Strata Profile Studio on this computer and open it in my browser: "
                 "https://github.com/qiuzan2001/strata-profile-studio (follow docs/AI_SETUP.md)")
 LIMIT_NAME = {"cpu": "CPU", "gpu": "GPU", "pcie": "PCIe"}
+CARDS_REPO = "qiuzan2001/strata-cards"                   # the cards site's repository (studio.py --cards-repo)
+
+
+def site_url(repo: str = CARDS_REPO) -> str:
+    """The GitHub Pages address of a cards repository: https://<owner>.github.io/<name>/."""
+    owner, name = repo.split("/", 1)
+    return f"https://{owner.lower()}.github.io/{name}/"
 
 CSS = """
 :root{--bg:#f4f3ef;--surface:#fcfcfb;--surface-2:#efeee9;--line:#e3e1db;--line-2:#cdcbc4;--ink:#1b1b19;--ink-2:#57564f;
@@ -277,7 +284,8 @@ def _similar(card, others) -> str:
             f"{''.join(rows)}</table></div>")
 
 
-def card_html(card, *, image="card.png", others=None, url=None, site_home=None, checked=False, json_href="card.json") -> str:
+def card_html(card, *, image="card.png", others=None, url=None, site_home=None, checked=False, json_href="card.json",
+              cards_repo: str = CARDS_REPO) -> str:
     """The card page.  `image`: the card image next to it (card.png or card.svg).  `url`: the page's own address
     (for the og: tags of link previews).  `others`: cards for "Similar PCs"."""
     chat = _decode(card, "chat") or card["decode"][0]
@@ -312,6 +320,7 @@ def card_html(card, *, image="card.png", others=None, url=None, site_home=None, 
 <div class='card'><h2>Not on this card</h2><ul class='excl small'>{''.join(f'<li>{E(x)}</li>' for x in EXCLUDED)}</ul></div>
 <div class='card'><h2>Files of this card</h2><p><img class='cardimg' src='{E(image)}' alt='The card as an image, 1200 x 630'></p>
 <p class='small'><a href='{E(json_href)}'>The data (JSON)</a> · <a href='{E(image)}'>the image (1200 x 630)</a></p>
+<p class='small'>Shared cards: <a href='{E(site_url(cards_repo))}'>{E(site_url(cards_repo))}</a> (the repository {E(cards_repo)})</p>
 <p class='small muted'>To make a card for your PC, give this sentence to a coding agent: <span class='mono'>{E(INSTALL_LINE)}</span>. Then select <b>Share</b> on a run in the Studio.</p></div></div>
 </main>"""
     return (f"<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>"
@@ -450,7 +459,7 @@ def _pillow_png(card, png_path: Path) -> bool:
     return True
 
 
-def write_files(card, out_dir: Path, footer: str | None = None) -> dict:
+def write_files(card, out_dir: Path, footer: str | None = None, cards_repo: str = CARDS_REPO) -> dict:
     """card.json, card.svg, card.html and, when this PC can, card.png in out_dir.  {"files": [...], "png": bool,
     "renderer": str}."""
     out_dir = Path(out_dir)
@@ -462,6 +471,7 @@ def write_files(card, out_dir: Path, footer: str | None = None) -> dict:
     ok, note = write_png(card, svg, png)
     if not ok and png.exists():
         png.unlink()
-    (out_dir / "card.html").write_text(card_html(card, image="card.png" if ok else "card.svg"), encoding="utf-8")
+    (out_dir / "card.html").write_text(card_html(card, image="card.png" if ok else "card.svg", cards_repo=cards_repo),
+                                       encoding="utf-8")
     files = ["card.html", "card.svg", "card.json"] + (["card.png"] if ok else [])
     return {"dir": str(out_dir), "files": files, "png": ok, "renderer": note}

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
 import shutil
 import statistics
 import sys
@@ -222,7 +223,8 @@ def build(data_dir: Path, out: Path, url: str | None = None, png: bool = True) -
         similar = sorted(by_family[family(e)], key=lambda c: (c["date"], c["id"]), reverse=True)[:12]
         page_url = f"{url.rstrip('/')}/c/{e['id']}/" if url else None
         html_ = render.card_html(e, image="card.png" if ok else "card.svg", others=similar if len(similar) > 1 else None,
-                                 url=page_url, site_home="../../", checked=True, json_href=f"../../data/{e['id']}.json")
+                                 url=page_url, site_home="../../", checked=True, json_href=f"../../data/{e['id']}.json",
+                                 cards_repo=os.environ.get("GITHUB_REPOSITORY") or render.CARDS_REPO)
         if len(members) > 1:
             runs = "".join(f"<tr><td class='mono'>{E(m['id'])}</td>" + "".join(f"<td class='num'>{render.fmt(_tps(m, k))}</td>" for k in KINDS) + "</tr>" for m in members)
             block = (f"<div class='card mt'><h2>Runs of this entry</h2><div class='sub'>{len(members)} cards of the same PC, settings and date · "

@@ -41,7 +41,7 @@ class StudioApp:
 
     def __init__(self, *, strata_url, results_dir, config_path, key, studio_key, host, port, client, poller,
                  flow, reports, state, web_dir, started_at, allow_hosts=(), engine_log=None, read_only=False, host_monitor=None, profiles=None,
-                 defaults_run=None, stock=None):
+                 defaults_run=None, stock=None, cards_repo=None, share_off=None):
         self.strata_url, self.results_dir, self.config_path = strata_url, results_dir, config_path
         self.key_set = bool(key)
         self.studio_key = studio_key                   # None: no bearer needed on /api/
@@ -54,6 +54,10 @@ class StudioApp:
         self.read_only = bool(read_only)
         self.host_monitor, self.profiles, self.defaults_run = host_monitor, profiles, defaults_run
         self._card_png = {}
+        from .share import CARDS_REPO, GhShare
+        self.cards_repo = cards_repo or CARDS_REPO      # the cards site's repository (--cards-repo)
+        self.gh_share = GhShare(self.cards_repo)
+        self.share_off = share_off                     # why the card cannot leave this Studio (the demo), or None
         self.stock = stock                             # studiolib.stock.StockBackend: a Strata without /profile routes
 
     @staticmethod
@@ -276,7 +280,8 @@ class StudioApp:
         """Destination 3 of the Share dialog: the card files in <the state file's folder>/card-files/<id>/."""
         from cards import render
         card = self.card(rid, name)
-        res = render.write_files(card, Path(self.state.path).resolve().parent / "card-files" / card["id"])
+        res = render.write_files(card, Path(self.state.path).resolve().parent / "card-files" / card["id"],
+                                 cards_repo=self.cards_repo)
         res["id"] = card["id"]
         return res
 
@@ -499,6 +504,15 @@ def make_handler(app: StudioApp):
                 return self._json(200, app.run_doc())
             if path == "/api/tunes":
                 return self._json(200, app.tunes_doc())
+            if path == "/api/share/targets":
+                from .share import targets
+                try:
+                    card = app.card((query.get("report") or [""])[0], (query.get("name") or [""])[0])
+                except cardmake.CardError as e:
+                    return self._error(400, str(e))
+                return self._json(200, targets(card, app.cards_repo, app.gh_share, app.share_off))
+            if path == "/api/share/gh":
+                return self._json(200, app.gh_share.snapshot())
             if path == "/api/card":
                 try:
                     return self._json(200, app.card_doc((query.get("report") or [""])[0], (query.get("name") or [""])[0],
@@ -600,6 +614,18 @@ def make_handler(app: StudioApp):
                     return self._error(e.status, e.message)
             if path == "/api/run-defaults":
                 return self._run_defaults()
+            if path == "/api/share/gh":
+                rid, name = body.get("report"), body.get("name") or ""
+                if not isinstance(rid, str) or not isinstance(name, str):
+                    return self._error(400, "The request needs \"report\" (a report id) and an optional \"name\".")
+                gh = {"ok": False, "reason": app.share_off} if app.share_off else app.gh_share.status()
+                if not gh["ok"]:
+                    return self._error(412, gh["reason"])
+                try:
+                    card = app.card(rid, name)
+                except cardmake.CardError as e:
+                    return self._error(400, str(e))
+                return self._json(200, app.gh_share.start(card))
             if path == "/api/card/files":
                 rid, name = body.get("report"), body.get("name") or ""
                 if not isinstance(rid, str) or not isinstance(name, str):

@@ -85,7 +85,8 @@ class Studio:
     def __init__(self, strata: str, results: str, key: str | None = None, host: str = "127.0.0.1", port: int = 8090,
                  config: str | None = None, state_path: str | None = None, timing: Timing | None = None,
                  allow_hosts=(), engine_log: str | None = None, read_only: bool = False, host_monitor=None,
-                 defaults_tool=None, host_info: bool = True, strata_root: str | None = None, stock_popen=None):
+                 defaults_tool=None, host_info: bool = True, strata_root: str | None = None, stock_popen=None,
+                 cards_repo: str | None = None, share_off: str | None = None):
         if not is_loopback(host) and not key:
             raise SystemExit("Refusing to listen on a non-loopback address without a key: add --key KEY "
                              "(or STRATA_KEY=KEY). The same key protects the Studio and is sent to Strata.")
@@ -119,7 +120,7 @@ class Studio:
                              host_monitor=host_monitor or HostMonitor(enabled=host_info), profiles=Profiles(config) if config else None,
                              defaults_run=DefaultsRun(self.client, self.poller, self.results, config, key,
                                                       tool=defaults_tool) if config else None,
-                             stock=self.stock)
+                             stock=self.stock, cards_repo=cards_repo, share_off=share_off)
         try:
             self.server = StudioServer(host, port, make_handler(self.app))
         except OSError as e:
@@ -201,6 +202,9 @@ def parse_args(argv=None):
                     help="write a result card of one profile report (its folder or its results.json): card.html, "
                          "card.svg, card.json and card.png (the PNG needs a headless Chrome, Chromium or Edge, or "
                          "Pillow), then stop. Nothing is sent")
+    ap.add_argument("--cards-repo", metavar="OWNER/NAME", default=None,
+                    help="the cards site's repository, for the Share dialog and the card page "
+                         "(default qiuzan2001/strata-cards)")
     ap.add_argument("--out", metavar="DIR", help="with --card: the folder for the files (default strata-card-<id>)")
     ap.add_argument("--name", default="", help="with --card: an optional name on the card (at most 12 characters: "
                                                 "letters, digits, space, - and _)")
@@ -235,6 +239,7 @@ def demo_studio(port: int, timing: Timing | None = None):
     """The demo: a temporary folder with copies of tests/fixtures/demo, the demo Strata (tests/demo_strata.py) on a
     free port, and a Studio against it.  Returns (studio, close); close() stops the demo Strata and removes the
     folder.  Nothing outside the temporary folder is read or written, and no host reader runs."""
+    from studiolib import share as share_mod
     import json
     import shutil
     import tempfile
@@ -266,7 +271,7 @@ def demo_studio(port: int, timing: Timing | None = None):
     try:
         studio = Studio(fake.url, str(tmp / "results"), port=port, config=str(config),
                         state_path=str(tmp / "studio-state.json"), timing=timing,
-                        host_monitor=HostMonitor(enabled=False, off_reason=DEMO_NOTE))
+                        host_monitor=HostMonitor(enabled=False, off_reason=DEMO_NOTE), share_off=share_mod.DEMO_OFF)
     except BaseException:
         stop.set()
         fake.stop()
@@ -322,7 +327,7 @@ def card_command(a) -> int:
     except CardError as e:
         print(f"No card: {e}", flush=True)
         return 1
-    res = render.write_files(card, Path(a.out or f"strata-card-{card['id']}"))
+    res = render.write_files(card, Path(a.out or f"strata-card-{card['id']}"), cards_repo=a.cards_repo or render.CARDS_REPO)
     print(f"Card {card['id']} in {res['dir']}: {', '.join(res['files'])}", flush=True)
     print(f"PNG: {'made with ' + res['renderer'] if res['png'] else res['renderer']}", flush=True)
     print("Not in the card: " + " · ".join(render.EXCLUDED) + ". Nothing was sent.", flush=True)
@@ -347,7 +352,7 @@ def main(argv=None) -> int:
     key = a.key or os.environ.get("STRATA_KEY") or None
     studio = Studio(a.strata, a.results, key=key, host=a.host, port=a.port, config=a.config, state_path=a.state,
                     allow_hosts=a.allow_host, engine_log=a.engine_log, read_only=a.read_only,
-                    host_info=a.host_info == "on", strata_root=a.strata_root)
+                    host_info=a.host_info == "on", strata_root=a.strata_root, cards_repo=a.cards_repo)
     shown = "[" + a.host + "]" if ":" in a.host else a.host
     print(f"Strata Profile Studio on http://{shown}:{studio.port}/ (Strata: {studio.app.strata_url}, "
           f"reports: {studio.results})", flush=True)
