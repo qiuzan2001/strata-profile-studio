@@ -73,7 +73,13 @@
       box.append(el('label', { class: 'toggle' }, on, ' on'), input);
     }
     for (const sp of (c.specials || []).filter((x) => x !== 'default')) box.appendChild(S.button(sp, () => { commit(sp); render(window.S.app); }, `small ${cur === sp ? 'on' : ''}`));
-    box.appendChild(S.button('Reset', () => { commit('default'); render(window.S.app); }, 'small', { title: `Remove the value from the file: the engine default (${c.engine_default}) applies.` }));
+    if (c.reset_to !== 'keep') {
+      const to = c.reset_to === null || c.reset_to === undefined ? 'default' : c.reset_to;
+      const title = c.group === 'setup' ? `Back to setup's value: ${to}.`
+        : c.group === 'calibration' ? (to === 'default' ? `Back to the calibration's default: no value in the file, the engine chooses (${c.engine_default}).` : `Back to the calibration's default: ${to} (setup's value).`)
+        : `Remove the value from the file: the engine default (${c.engine_default}) applies.`;
+      box.appendChild(S.button('Reset', () => { commit(to); render(window.S.app); }, 'small', { title }));
+    }
     box.appendChild(err);
     return box;
   }
@@ -199,12 +205,13 @@
       const c = r.control;
       const tr = el('tr', { class: `${notes.length ? 'disagree-row' : ''} ${edits.has(r.id) ? 'edited' : ''}` },
         el('td', null, el('div', { class: 'mono', text: r.name }), r.calibrated ? S.chip('calibrated', 'small', 'Tune this PC measures this setting.') : null,
+          c && c.group === 'setup' ? S.chip('set by setup', 'small', 'setup.py wrote this flag for this install. The Studio does not remove it.') : null,
           el('div', { class: 'about', text: r.about }), notes.map((n) => el('div', { class: 'disagree', text: `⚠ ${n}` }))),
         el('td', { class: 'num', text: r.now ?? '–' }),
         el('td', { class: 'num', text: r.next_load ?? (r.now !== null ? 'engine default' : '–') }),
         el('td', { class: 'num', text: r.run_config ?? '–' }),
         el('td', { class: 'small', text: c ? c.engine_default : '–' }),
-        el('td', null, control(r), c ? el('div', { class: 'hint', text: `${c.source}. Applies at the next start of Strata.` }) : null));
+        el('td', null, control(r), c ? el('div', { class: 'hint', text: `${c.source}. Applies at the next start of Strata.${c.reset_to === 'keep' ? ' Setup chose this value for this PC: to choose it again, run setup.' : ''}` }) : null));
       refs.rows[r.id] = { tr };
       tb.appendChild(tr);
     }
@@ -212,7 +219,16 @@
     const d = refs.diff = { title: el('h4', { text: '' }), list: el('div', { class: 'diffs' }) };
     d.write = S.button(`Write the edits to ${st.file || 'the file'}`, () => writeEdits(A), 'danger');
     d.discard = S.button('Discard the edits', () => { edits.clear(); render(A); }, 'small');
-    const resetAll = S.button('Reset all to the engine defaults', () => { for (const r of rows) if (r.control && r.run_config !== null && r.run_config !== undefined) edits.set(r.id, null); render(A); }, 'small');
+    // the calibrated knobs only, to the calibration's own defaults; setup's flags stay (a native pack needs them)
+    const resetAll = S.button('Reset the calibrated settings', () => {
+      for (const r of rows) {
+        const c = r.control;
+        if (!c || c.group !== 'calibration') continue;
+        const to = c.reset_to === undefined ? null : c.reset_to;
+        if (!same(norm(r.run_config), to)) edits.set(r.id, to);
+      }
+      render(A);
+    }, 'small', { title: 'The settings Tune this PC writes go back to the calibration\'s defaults. The flags that setup wrote stay.' });
     const diffCard = S.card({ q: 'Edits', sub: fileDoc && !fileDoc.error ? `the Studio writes ${fileDoc.path} and keeps a copy in ${fileDoc.backup}` : (fileDoc && fileDoc.error) || 'the run config file is not known', cls: 'span3 edits-card' },
       d.title, d.list, el('div', { class: 'row-buttons' }, d.write, d.discard, resetAll),
       A.readOnly() ? el('p', { class: 'note', text: 'This Studio runs with --read-only. It writes no file.' }) : null);

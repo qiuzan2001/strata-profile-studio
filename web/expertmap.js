@@ -1,4 +1,4 @@
-/* Strata Profile Studio: the expert map.  One cell per expert: 48 layers (rows) x 512 experts (columns), coloured by
+/* Strata Profile Studio: the expert map.  One cell per expert: layers (rows) x experts (columns), sizes from the profile header, coloured by
    the expert's rank in the expert profile (the order the engine fills its VRAM cache in).  The first `expert_slots`
    ranks are the experts resident at load.  A learned profile (the engine's expert_profile_save) shows where the
    adaptive tier moved experts, and two saves show what changed between them.
@@ -35,7 +35,7 @@
     const info = el('div', { class: 'map-info muted small' });
     const tools = el('div', { class: 'card-tools' });
     const legend = el('div', { class: 'legend map-legend' });
-    const card = S.card({ q: 'Expert map', sub: '48 layers (rows) x 512 experts (columns) · colour: the expert\'s rank in the profile · blue: resident in the VRAM cache at load', cls: 'span3 map-card', tools },
+    const card = S.card({ q: 'Expert map', sub: 'layers (rows) x experts (columns) · colour: the expert\'s rank in the profile · blue: resident in the VRAM cache at load', cls: 'span3 map-card', tools },
       info, wrap, legend);
     M.r = { canvas, bars, wrap, info, tools, legend, card };
     canvas.addEventListener('mousemove', (e) => {
@@ -89,6 +89,7 @@
       byRank.push(ids);
     }
     M.data = { ranks, layers, experts, slots, prev, byRank };
+    S.setText(M.r.card.querySelector('.sub'), `${layers} layers (rows) x ${experts} experts (columns), from the profile header · colour: the expert's rank in the profile · blue: resident in the VRAM cache at load`);
     // info: what is per-expert data, from where and when; what is not
     const learnedLine = doc.learned_configured
       ? (doc.learned && doc.learned.mtime ? `Learned profile ${doc.learned.path}: saved ${S.clock(doc.learned.mtime, true)} (every ${doc.learned_every_min} min).${doc.learned.previous ? ` Since the save of ${S.clock(doc.learned.previous.mtime, true)}: ${S.int(doc.learned.previous.entered)} experts entered the cache, ${S.int(doc.learned.previous.left)} left.` : ''}` : 'The learned profile is on, but the engine has not saved one yet.')
@@ -137,7 +138,7 @@
     if (ch >= 9) per.forEach((n, l) => bg.fillText(String(n), 94, l * ch + ch - 2));
     S.fill(M.r.legend,
       el('span', { class: 'lg' }, el('i', { class: 'sw grad-hot' }), `resident at load: rank 0 to ${S.int(slots - 1)}`),
-      el('span', { class: 'lg' }, el('i', { class: 'sw grad-cold' }), 'not resident: rank to 24,575'),
+      el('span', { class: 'lg' }, el('i', { class: 'sw grad-cold' }), `not resident: rank to ${S.int(total - 1)}`),
       el('span', { class: 'lg' }, el('i', { class: 'sw k-gemm' }), `bars: resident experts per layer (${S.int(Math.min(...per))} to ${S.int(maxN)})`),
       prev ? el('span', { class: 'lg' }, el('i', { class: 'sw dot better' }), 'entered the cache since the previous save') : null,
       prev ? el('span', { class: 'lg' }, el('i', { class: 'sw dot worse' }), 'left the cache') : null);

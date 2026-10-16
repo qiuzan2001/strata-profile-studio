@@ -23,7 +23,7 @@ import tempfile
 import threading
 import time
 from collections import deque
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from .settings import read_config
 
@@ -51,11 +51,22 @@ def strata_root(cfg: dict, config_path) -> Path | None:
         cands.append(Path(config_path).resolve().parent)
     exe = cfg.get("exe") if isinstance(cfg.get("exe"), str) else None
     if exe:
-        cands.append(Path(os.path.expanduser(exe)).resolve().parent.parent)
+        if "\\" in exe and os.sep != "\\":                # a Windows path read on another OS: only its folder names
+            cands.append(Path(*PureWindowsPath(exe).parent.parent.parts[1:]))
+        else:
+            cands.append(Path(os.path.expanduser(exe)).resolve().parent.parent)
     for c in cands:
         if (c / "tools" / "strata_profile.py").is_file():
             return c
     return None
+
+
+def strata_python(root: Path, platform=None) -> Path | None:
+    """The Python of Strata's own environment (setup.py installs it into <root>/.venv): the profile tool starts
+    Strata's server, which needs the packages there.  None when there is no .venv (then the Studio's Python)."""
+    platform = platform or sys.platform
+    p = root / ".venv" / "Scripts" / "python.exe" if platform == "win32" else root / ".venv" / "bin" / "python"
+    return p if p.exists() else None
 
 
 def free_port(start=8200) -> int:
@@ -141,13 +152,15 @@ class DefaultsRun:
             if self.tool is not None:
                 cmd = list(self.tool) + ["--config", str(tmp), "--out", str(self.results_dir)]
             else:
-                cmd = [sys.executable, str(root / "tools" / "strata_profile.py"), "--config", str(tmp),
+                py = strata_python(root) or Path(sys.executable)
+                cmd = [str(py), str(root / "tools" / "strata_profile.py"), "--config", str(tmp),
                        "--port", str(free_port()), "--out", str(self.results_dir)]
             env = dict(os.environ)
             if self.key:
                 env["STRATA_KEY"] = self.key
             self._say("Starting: " + " ".join(cmd[1:3]) + " ... (loading the model takes 1-3 minutes)")
             proc = subprocess.Popen(cmd, cwd=str(root), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                    encoding="utf-8", errors="replace",
                                     env=env)
             for line in proc.stdout:
                 self._say(line.rstrip("\n"))

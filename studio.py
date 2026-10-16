@@ -62,7 +62,7 @@ class Studio:
     def __init__(self, strata: str, results: str, key: str | None = None, host: str = "127.0.0.1", port: int = 8090,
                  config: str | None = None, state_path: str | None = None, timing: Timing | None = None,
                  allow_hosts=(), engine_log: str | None = None, read_only: bool = False, host_monitor=None,
-                 defaults_tool=None):
+                 defaults_tool=None, host_info: bool = True):
         if not is_loopback(host) and not key:
             raise SystemExit("Refusing to listen on a non-loopback address without a key: add --key KEY "
                              "(or STRATA_KEY=KEY). The same key protects the Studio and is sent to Strata.")
@@ -87,7 +87,7 @@ class Studio:
                              flow=self.flow, reports=self.reports, state=self.state, web_dir=ROOT / "web",
                              started_at=time.time(), allow_hosts=allow_hosts,
                              engine_log=EngineLog(engine_log or default_engine_log(config)), read_only=read_only,
-                             host_monitor=host_monitor or HostMonitor(), profiles=Profiles(config) if config else None,
+                             host_monitor=host_monitor or HostMonitor(enabled=host_info), profiles=Profiles(config) if config else None,
                              defaults_run=DefaultsRun(self.client, self.poller, self.results, config, key,
                                                       tool=defaults_tool) if config else None)
         try:
@@ -153,6 +153,11 @@ def parse_args(argv=None):
                     help="Strata's strata-<model>.json, read only: the Settings view shows its values")
     ap.add_argument("--read-only", action="store_true",
                     help="look only: no profile run, no tune, no config write (every POST answers 403)")
+    ap.add_argument("--host-info", choices=("on", "off"), default="on",
+                    help="read this PC's CPU, GPU, memory and disk (default on); off: no reader and no subprocess, "
+                         "the page uses Strata's readings only")
+    ap.add_argument("--host-probe", action="store_true",
+                    help="print each host reader of this PC (source, answer, raw first line) and exit")
     ap.add_argument("--engine-log", default=None,
                     help="Strata's engine log, read only (default: the config's \"log\" key, or strata-<model>.log "
                          "next to it): the PC diagram's PCIe link ceiling")
@@ -163,9 +168,15 @@ def parse_args(argv=None):
 
 def main(argv=None) -> int:
     a = parse_args(argv)
+    if a.host_probe:
+        from studiolib.hostinfo import probe_text
+        mon = HostMonitor(enabled=True)
+        print(probe_text(mon, EngineLog(a.engine_log or default_engine_log(a.config))), flush=True)
+        return 0
     key = a.key or os.environ.get("STRATA_KEY") or None
     studio = Studio(a.strata, a.results, key=key, host=a.host, port=a.port, config=a.config, state_path=a.state,
-                    allow_hosts=a.allow_host, engine_log=a.engine_log, read_only=a.read_only)
+                    allow_hosts=a.allow_host, engine_log=a.engine_log, read_only=a.read_only,
+                    host_info=a.host_info == "on")
     shown = "[" + a.host + "]" if ":" in a.host else a.host
     print(f"Strata Profile Studio on http://{shown}:{studio.port}/ (Strata: {studio.app.strata_url}, "
           f"reports: {studio.results})", flush=True)

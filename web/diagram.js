@@ -59,12 +59,13 @@
     r.big = el('span', { class: 'blk-big num', text: '–' });
     r.unit = el('span', { class: 'blk-unit', text: o.unit || '' });
     r.meter = meter(o.meter || ['m-main']);
+    r.note = el('div', { class: 'blk-note', text: '' });
     const facts = el('div', { class: 'facts-mini' }, (o.facts || []).map(([k, label]) => (r.facts[k] = fact(label)).node));
     const sparks = el('div', { class: 'sparks' }, (o.sparks || []).map(([k, label, unit]) => (r.sparks[k] = spark(label, unit)).node));
     r.node = el('div', { class: `blk blk-${key}`, dataset: { block: key } },
       el('div', { class: 'blk-head' }, r.name, r.badge),
       el('div', { class: 'blk-value' }, r.big, r.unit),
-      o.noMeter ? null : r.meter.node, o.extra || null, facts, sparks);
+      o.noMeter ? null : r.meter.node, o.extra || null, r.note, facts, sparks);
     return r.node;
   }
   function link(key, label, o) {
@@ -72,10 +73,11 @@
     r.label = el('span', { class: 'lnk-label', text: label });
     r.value = el('span', { class: 'lnk-value num', text: '–' });
     r.ceil = el('span', { class: 'lnk-ceil', text: '' });
+    r.note = el('span', { class: 'blk-note', text: '' });
     r.fill = el('i', { class: 'pipe-fill' });
     r.pipe = el('div', { class: 'pipe' }, r.fill, el('i', { class: 'pipe-flow' }));
     const sparks = el('div', { class: 'sparks' }, ((o && o.sparks) || []).map(([k, l, u]) => (r.sparks[k] = spark(l, u)).node));
-    r.node = el('div', { class: `lnk lnk-${key}` }, r.label, r.pipe, r.value, r.ceil, sparks);
+    r.node = el('div', { class: `lnk lnk-${key}` }, r.label, r.pipe, r.value, r.ceil, r.note, sparks);
     return r.node;
   }
   function coreGrid() {
@@ -205,17 +207,25 @@
       const now = hw.now || {}, st = hw.static || {}, eng = hw.engine || {}, hist = hw.history || {};
       const probe = (hw.log || {}).probe, live = hw.live || {}, win = hw.window || null;
       const cpu = host.cpu || null, gpu = host.gpu || null, hh = host.history || {};
+      const notes = host.notes || {};
+      const log = hw.log || {};
+      const short = (n) => (n ? n.split('. ')[0].replace(/\.$/, '') : '');
+      const some = (a, b) => (a && a.some(isNum) ? a : b);   // the first series with a reading (host off: all null)
       const fresh = isNum(hw.at) && Date.now() / 1000 - hw.at < 15;
       const generating = live.state === 'generating';
       const setSpark = (r, vals, max, fmt) => { r.s.update(vals, max); const last = (vals || []).filter(isNum).slice(-1)[0]; S.setText(r.v, isNum(last) ? `${(fmt || ((v) => S.num(v, 0)))(last)} ${r.unit}` : '–'); };
       // ---- disk
-      num(R.disk.big, now.disk_read_mb, (v) => v.toFixed(v < 10 ? 1 : 0));
-      S.setText(R.disk.facts.write.v, isNum(now.disk_write_mb) ? `${S.num(now.disk_write_mb, 1)} MB/s` : 'no counters');
-      setSpark(R.disk.sparks.read, hist.disk_read_mb, null, (v) => S.num(v, 1));
-      setSpark(R.disk.sparks.write, ring('disk_w', now.disk_write_mb), null, (v) => S.num(v, 1));
+      const hd = host.disk || {};
+      const dRead = isNum(now.disk_read_mb) ? now.disk_read_mb : hd.read_mb, dWrite = isNum(now.disk_write_mb) ? now.disk_write_mb : hd.write_mb;
+      num(R.disk.big, dRead, (v) => v.toFixed(v < 10 ? 1 : 0));
+      S.setText(R.disk.facts.write.v, isNum(dWrite) ? `${S.num(dWrite, 1)} MB/s` : 'not available');
+      setSpark(R.disk.sparks.read, (hist.disk_read_mb && hist.disk_read_mb.some(isNum)) ? hist.disk_read_mb : ring('disk_r', dRead), null, (v) => S.num(v, 1));
+      setSpark(R.disk.sparks.write, ring('disk_w', dWrite), null, (v) => S.num(v, 1));
+      S.setText(R.disk.note, isNum(dRead) ? '' : (notes.disk || 'No disk counters on this PC.'));
       S.setText(R['l-disk'].value, '');
       // ---- RAM
-      const ramU = now.ram_used, ramT = now.ram_total;
+      const hm = host.memory || {};
+      const ramU = isNum(now.ram_used) ? now.ram_used : hm.used, ramT = isNum(now.ram_total) ? now.ram_total : hm.total;
       num(R.ram.big, isNum(ramU) ? ramU / 2 ** 30 : null, (v) => v.toFixed(1));
       scale(R.ram.meter.fills[0], isNum(ramU) && ramT ? ramU / ramT : null);
       S.setText(R.ram.facts.total.v, isNum(ramT) ? `${S.num(ramT / 2 ** 30, 1)} GiB` : '–');
@@ -240,21 +250,25 @@
         scale(cell.fill, isNum(d.busy) ? d.busy / 100 : 0, 'y');
         S.setText(cell.mhz, isNum(d.mhz) ? (d.mhz / 1000).toFixed(1) : '');
       });
-      S.setText(R.cpu.facts.temp.v, cpu && isNum(cpu.temp_c) ? `${S.num(cpu.temp_c, 1)} °C` : 'not readable');
-      S.setText(R.cpu.facts.power.v, cpu && isNum(cpu.power_w) ? `${S.num(cpu.power_w, 1)} W` : 'not readable');
-      S.setAttr(R.cpu.facts.power.node, 'title', cpu && cpu.power_hint ? cpu.power_hint : '');
+      S.setText(R.cpu.facts.temp.v, cpu && isNum(cpu.temp_c) ? `${S.num(cpu.temp_c, 1)} °C` : 'not available');
+      S.setAttr(R.cpu.facts.temp.node, 'title', cpu && cpu.temp_source ? `sensor: ${cpu.temp_source}` : (notes.temp || notes.cpu || ''));
+      S.setText(R.cpu.facts.power.v, cpu && isNum(cpu.power_w) ? `${S.num(cpu.power_w, 1)} W` : 'not available');
+      S.setAttr(R.cpu.facts.power.node, 'title', notes.power || notes.cpu || '');
+      S.setText(R.cpu.note, !cpu ? (notes.cpu || 'No per-core readings.') : !cores.length ? 'No per-core readings on this OS.' : (notes.power && notes.power.startsWith('Not readable') ? 'Package power: not readable without access (hover for the command).' : (notes.freq || '')));
+      S.setAttr(R.cpu.note, 'title', notes.power || '');
       const pc = host.pool_cpus || [];
       S.setText(R.cpu.facts.pool.v, pc.length ? `${pc.length} on CPU ${pc[0]}-${pc[pc.length - 1]}` : (isNum(eng.pool_workers) ? `${eng.pool_workers}` : '–'));
       S.setAttr(R.cpu.facts.pool.node, 'title', pc.length ? `pool workers on CPUs ${pc.join(', ')}, the host thread on CPU ${host.host_cpu} (engine log)` : '');
-      setSpark(R.cpu.sparks.busy, (hh.cpu || {}).busy || hist.cpu, 100);
+      setSpark(R.cpu.sparks.busy, some((hh.cpu || {}).busy, hist.cpu), 100);
       setSpark(R.cpu.sparks.temp, (hh.cpu || {}).temp_c, null, (v) => S.num(v, 1));
       setSpark(R.cpu.sparks.power, (hh.cpu || {}).power_w, null, (v) => S.num(v, 1));
-      if (cpu && !isNum(cpu.power_w) && cpu.power_hint) S.setText(R.cpu.sparks.power.v, 'not readable');
+      if (!cpu || !isNum(cpu.power_w)) S.setText(R.cpu.sparks.power.v, 'not available');
+      if (!cpu || !isNum(cpu.temp_c)) S.setText(R.cpu.sparks.temp.v, 'not available');
       // ---- the memory bus: the one estimate (CPU-expert share of the window x the pool's measured expert rate)
       const cpuShare = win && win.window_ms && isNum(win.ms_per_window) && win.ms_per_window > 0 ? (win.window_ms['CPU experts'] || 0) / win.ms_per_window : null;
       const busEst = probe && isNum(cpuShare) ? cpuShare * probe.cpu_gbs : null;
       S.setText(R['l-bus'].value, generating && isNum(busEst) ? `≈ ${S.num(busEst, 1)} GB/s` : (isNum(busEst) ? '≈ 0 GB/s' : '–'));
-      S.setText(R['l-bus'].ceil, probe ? `of ${S.num(probe.cpu_gbs, 1)} GB/s measured` : 'no probe line in the log');
+      S.setText(R['l-bus'].ceil, probe ? `of ${S.num(probe.cpu_gbs, 1)} GB/s measured` : (log.readable ? 'This build prints no PCIe probe line.' : 'No engine log.'));
       S.setAttr(R['l-bus'].node, 'title', probe ? `Estimate: the CPU-expert share of the last decode window x ${S.num(probe.cpu_gbs, 1)} GB/s (the CPU pool's expert rate from the engine's PCIe probe). Last decode: ≈ ${S.num(busEst, 1)} GB/s.` : '');
       scale(R['l-bus'].fill, generating && probe && isNum(busEst) ? busEst / probe.cpu_gbs : 0, 'y');
       S.setClass(R['l-bus'].node, 'flowing', generating);
@@ -267,6 +281,7 @@
       const nominal = isNum(gmax) && isNum(width) ? ({ 1: 0.25, 2: 0.5, 3: 0.985, 4: 1.969, 5: 3.938, 6: 7.563 }[gmax] || 0) * width : null;
       const ceilGB = probe ? probe.link_gbs : nominal;
       S.setText(R['l-pcie'].value, isNum(rx) ? S.mbps(rx + (tx || 0)) : '–');
+      S.setText(R['l-pcie'].note, isNum(rx) ? '' : fresh ? 'This build does not report PCIe traffic.' : '');
       S.setText(R['l-pcie'].ceil, ceilGB ? `of ${S.num(ceilGB, 1)} GB/s ${probe ? 'measured' : 'nominal'}` : '');
       scale(R['l-pcie'].fill, ceilGB && isNum(rx) ? (rx + (tx || 0)) / (ceilGB * 1000) : 0, 'y');
       S.setClass(R['l-pcie'].node, 'flowing', isNum(rx) && rx > 200);
@@ -308,10 +323,12 @@
       row('fan', isNum(g.fan_pct) ? g.fan_pct / 100 : null, isNum(g.fan_pct) ? `${S.num(g.fan_pct, 0)} %` : '–');
       row('ps', null, g.pstate || '–');
       row('link', isNum(gen) && gmax ? gen / gmax : null, isNum(gen) ? `Gen ${gen} of ${gmax} · x${width}` : '–');
-      row('why', null, g.reason_words ? (g.reason_words.length ? g.reason_words.join(', ') : 'none') : (host.gpu_error ? 'no nvidia-smi' : '–'));
-      setSpark(R.gpu.sparks.busy, hist.gpu_util || (hh.gpu || {}).util, 100);
-      setSpark(R.gpu.sparks.power, hist.gpu_power || (hh.gpu || {}).power_w, pl || null);
-      setSpark(R.gpu.sparks.temp, hist.gpu_temp || (hh.gpu || {}).temp_c, null);
+      row('why', null, g.reason_words ? (g.reason_words.length ? g.reason_words.join(', ') : 'none') : '–');
+      S.setText(R.gpu.note, gpu ? (gpu.vendor === 'amd' ? 'Clock limit reasons: NVIDIA only.' : '') : short(notes.gpu) || 'No GPU tool: only Strata\'s readings.');
+      S.setAttr(R.gpu.note, 'title', notes.gpu || host.gpu_error || '');
+      setSpark(R.gpu.sparks.busy, some(hist.gpu_util, (hh.gpu || {}).util), 100);
+      setSpark(R.gpu.sparks.power, some(hist.gpu_power, (hh.gpu || {}).power_w), pl || null);
+      setSpark(R.gpu.sparks.temp, some(hist.gpu_temp, (hh.gpu || {}).temp_c), null);
       setSpark(R.gpu.sparks.sm, (hh.gpu || {}).sm_mhz, g.sm_max_mhz || null, S.int);
       // ---- the limit: the owner of the largest share of the last decode window (or of the prompt read now)
       let owner = null, part = null, share = null;
@@ -332,14 +349,14 @@
       const sum = R.sum;
       S.setText(sum.state, !fresh ? 'no reading from Strata' : generating ? 'decode now' : live.state === 'reading' ? 'prompt read now' : 'idle: last request');
       num(sum.tps, generating && isNum(live.tok_s) ? live.tok_s : (win ? win.decode_tok_s : null), (v) => v.toFixed(1));
-      S.setText(sum.limit, part ? `Limiting component: ${S.PART_LABEL[part] || part}, ${S.pct(share)} of the ${live.state === 'reading' ? 'prompt read' : 'decode window'}` : 'No request with a time split yet');
+      S.setText(sum.limit, part ? `Limiting component: ${S.PART_LABEL[part] || part}, ${S.pct(share)} of the ${live.state === 'reading' ? 'prompt read' : 'decode window'}` : (win ? 'This build does not report the decode window.' : 'No request with a time split yet.'));
       S.setText(sum.why, owner === 'cpu' ? `The CPU pool is limited by RAM bandwidth.${ctx.workers ? ` ${ctx.workers}.` : ''}` : owner === 'pcie' ? 'Expert copies over PCIe.' : owner === 'gpu' ? 'GPU compute.' : '');
       if (win && win.window_ms) for (const k of S.DECODE_PARTS) { const v = win.window_ms[k] || 0; sum.parts[k]._ms = v; S.setStyle(sum.parts[k], 'flexGrow', Math.max(0, v).toFixed(3)); }
       // ---- the experts
       const X = R.exp;
       const src = win ? S.expertSources(win) : null;
       const slots = eng.expert_slots, total = ctx.experts && ctx.experts.base ? ctx.experts.base.layers * ctx.experts.base.experts : null;
-      S.setText(X.state, win ? `${generating ? 'decode now' : 'last decode'} · per-window counts from the engine log, not per expert` : 'no decode yet');
+      S.setText(X.state, win ? `${generating ? 'decode now' : 'last decode'} · per-window counts from the engine log, not per expert${win.window_ms ? '' : ' · this build does not report the decode window'}` : 'no decode with a time split yet');
       S.setText(X.facts.slots.v, isNum(slots) ? `${S.int(slots)}${total ? ` of ${S.int(total)} (${S.pct(slots / total, 1)})` : ''}` : '–');
       S.setText(X.facts.cache.v, isNum(eng.expert_cache_mib) ? `${S.int(eng.expert_cache_mib)} MiB` : '–');
       S.setText(X.facts.arena.v, isNum(eng.arena_mib) ? `${S.num(eng.arena_mib / 1024, 1)} GiB` : '–');
@@ -348,7 +365,7 @@
       S.setText(X.facts.pciew.v, win && isNum(win.pcie_per_window) ? S.num(win.pcie_per_window, 2) : '–');
       S.setText(X.facts.swaps.v, win && isNum(win.swaps) ? S.num(win.swaps, 1) : '–');
       S.setText(X.facts.adapt.v, win && win.window_ms && isNum(win.window_ms['adapt wait']) ? `${S.num(win.window_ms['adapt wait'], 2)} ms` : '–');
-      S.setText(X.facts.kv.v, win && isNum(win.kv_hit) ? S.pct(win.kv_hit, 1) : '–');
+      S.setText(X.facts.kv.v, win && isNum(win.kv_hit) ? S.pct(win.kv_hit, 1) : (win ? 'not reported' : '–'));
       const ex = ctx.experts || {};
       S.setText(X.facts.learned.v, ex.learned_configured ? (ex.learned && ex.learned.mtime ? `saved ${S.ago(ex.learned.mtime)}` : 'on, no save yet') : 'off');
       S.setText(X.shareText, src ? `${S.pct(src.vram)} / ${S.pct(src.pcie)} / ${S.pct(src.cpu)}` : '–');

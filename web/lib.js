@@ -18,7 +18,7 @@ S.attrs = function attrs(n, a) {
   for (const [k, v] of Object.entries(a)) {
     if (v === undefined || v === null || v === false) continue;
     if (k === 'class') n.className = v;
-    else if (k === 'text') n.textContent = v;
+    else if (k === 'text') { n.textContent = v; if (v === '') n.appendChild(document.createTextNode('')); }   // a text node to set later
     else if (k === 'style') Object.assign(n.style, v);
     else if (k.startsWith('on') && typeof v === 'function') n.addEventListener(k.slice(2), v);
     else if (k === 'dataset') Object.assign(n.dataset, v);
@@ -51,7 +51,7 @@ S.svg = function svg(tag, attrs, ...kids) {
   if (attrs) {
     for (const [k, v] of Object.entries(attrs)) {
       if (v === undefined || v === null || v === false) continue;
-      if (k === 'text') n.textContent = v;
+      if (k === 'text') { n.textContent = v; if (v === '') n.appendChild(document.createTextNode('')); }
       else if (k === 'class') n.setAttribute('class', v);
       else if (k.startsWith('on') && typeof v === 'function') n.addEventListener(k.slice(2), v);
       else n.setAttribute(k, String(v));
@@ -76,6 +76,7 @@ S.setText = function setText(node, s) {
   s = s === null || s === undefined ? '' : String(s);
   const t = node.firstChild;
   if (t && t.nodeType === 3 && !t.nextSibling) { if (t.nodeValue !== s) t.nodeValue = s; return node; }
+  if (!t) { node.appendChild(document.createTextNode(s)); return node; }   // kept: a later '' sets its value only
   if (node.textContent !== s) node.textContent = s;
   return node;
 };
@@ -207,6 +208,24 @@ S.kindMark = function kindMark(kind, x, y, r, cls) {
   if (kind === 'follow-up') return S.svg('path', { class: c, d: `M${x} ${y - r * 1.25}L${x + r * 1.25} ${y}L${x} ${y + r * 1.25}L${x - r * 1.25} ${y}Z` });
   if (kind === 'long prompt') return S.svg('path', { class: c, d: `M${x} ${y - r * 1.3}L${x + r * 1.2} ${y + r * 0.9}L${x - r * 1.2} ${y + r * 0.9}Z` });
   return S.svg('circle', { class: c + (kind === 'prompt only' ? ' hollow' : ''), cx: x, cy: y, r });
+};
+// a kind icon for a live region: each shape built once, a new kind changes attributes only
+S.liveKindIcon = function liveKindIcon() {
+  const node = S.svg('svg', { class: 'kind-icon', viewBox: '-6 -6 12 12', width: 12, height: 12, 'aria-hidden': 'true', display: 'none' });
+  const shapes = { circle: S.kindMark('short', 0, 0, 3.6), 'follow-up': S.kindMark('follow-up', 0, 0, 3.6), 'long prompt': S.kindMark('long prompt', 0, 0, 3.6) };
+  for (const n of Object.values(shapes)) node.appendChild(n);
+  return {
+    node,
+    set(kind) {
+      S.setAttr(node, 'display', kind ? null : 'none');
+      if (!kind) return;
+      const shape = shapes[kind] ? kind : 'circle';
+      for (const [k, n] of Object.entries(shapes)) {
+        S.setAttr(n, 'display', k === shape ? null : 'none');
+        if (k === shape) S.setAttr(n, 'class', `mark kind-${kind.replace(' ', '-')}${kind === 'prompt only' ? ' hollow' : ''}`);
+      }
+    },
+  };
 };
 S.kindIcon = function kindIcon(kind) {
   const s = S.svg('svg', { class: 'kind-icon', viewBox: '-6 -6 12 12', width: 12, height: 12, 'aria-hidden': 'true' });

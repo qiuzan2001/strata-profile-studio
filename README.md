@@ -45,7 +45,9 @@ The page and this file use these terms, and only these terms, for these things.
 
 ## Requirements
 
-- Linux, Python 3.11 or newer, and a browser. The Studio may work on other systems. Only Linux has tests.
+- Python 3.11 or newer, and a browser. The Studio uses the standard library only.
+- Linux, Windows or macOS. Strata can use an NVIDIA, AMD, Intel or Apple GPU. The readings of each system are in
+  [Support by system](#support-by-system).
 - Strata on the same PC.
 - Strata needs `"profile": true` in `strata-<model>.json` (or `serve/server.py --profile`) for these parts: the time
   per request on Now, **Run a profile** and **Tune**. Without it, Now shows speeds only.
@@ -73,6 +75,13 @@ line:
 STRATA_KEY=... python3 studio.py --strata http://127.0.0.1:8080 --results ~/Strata/bench/results
 ```
 
+On Windows, use the Python launcher `py` and the paths of your Strata folder. In PowerShell, set the key with
+`$env:STRATA_KEY = "..."` before the command:
+
+```
+py studio.py --strata http://127.0.0.1:8080 --results C:\Strata\bench\results --config C:\Strata\strata-swift-iq3_s.json
+```
+
 The Studio prints `Strata Profile Studio on http://127.0.0.1:8090/ (Strata: ..., reports: ...)`. It runs until you
 press Ctrl-C. When you close the browser tab, nothing stops. The polls and a running tune are in `studio.py`.
 
@@ -88,9 +97,66 @@ press Ctrl-C. When you close the browser tab, nothing stops. The polls and a run
 | `--allow-host HOST[:PORT]` | none | The Studio also answers to this `Host` name (you can give the flag more than once). It still listens on `--host` only. Use it for a reverse proxy (see below). A name without a port allows each port. |
 | `--config PATH` | none | Strata's `strata-<model>.json`. The Settings page shows its values. The Studio writes it only after a dialog on the Settings page, and keeps a `.bak` copy first. |
 | `--engine-log PATH` | the config's `"log"`, else `strata-<model>.log` next to it | Strata's engine log, read only, the tail only. The PC module reads the PCIe probe line (the measured link and CPU pool speeds) and the CPUs of the pool workers. |
+| `--host-info on\|off` | `on` | `on`: the Studio reads this PC's CPU, GPU, memory and disk. `off`: no reader and no subprocess. Then the page shows Strata's own readings only (`/metrics`, the engine log and the reports). |
+| `--host-probe` | | Print each host reader of this PC (its source, whether it answers, the first raw line) and stop. See [Report your PC](#report-your-pc). |
 | `--read-only` | off | The Studio starts no profile run and no tune, and writes no file. Every POST answers 403. Use it to show the Studio to other persons. |
 | `--state PATH` | `studio-state.json` next to `studio.py` | The Studio's own file (tune records, notes). |
 | `--version` | | Print the version. |
+
+## Support by system
+
+Each host reading is optional. When a reading is missing, its block says why: "not available on Windows",
+"needs powermetrics (root)", or "this build does not report PCIe traffic". With `--host-info off`, each view shows
+the data from Strata's `/metrics`, the engine log and the reports.
+
+**Host readings: what the Studio reads on each system**
+
+| System | CPU busy, per core | CPU frequency | CPU temperature | CPU power | RAM | Disk | Tested |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Linux | `/proc/stat` | cpufreq | hwmon: k10temp, zenpower, coretemp, cpu_thermal, thinkpad, acpitz | RAPL (`intel-rapl*`), needs read access | `/proc/meminfo` | `/proc/diskstats` | on hardware |
+| Windows | `NtQuerySystemInformation` | `CallNtPowerInformation` | not available | not available | `GlobalMemoryStatusEx` | not available | from the documentation |
+| macOS | `host_processor_info` | not available | needs powermetrics (root) | needs powermetrics (root) | `sysctl`, `vm_stat` | not available | from the documentation |
+
+**GPU readings: the GPU tool of the Studio and the `/metrics` readings of Strata**
+
+| System and GPU | GPU tool of the Studio | Strata `/metrics` | Tested |
+| --- | --- | --- | --- |
+| Linux, NVIDIA | `nvidia-smi`: clocks, power, temperature, fan, P-state, PCIe link, clock limit reasons | use, VRAM, temperature, power, PCIe link and traffic | on hardware (RTX 5070 Ti) |
+| Windows, NVIDIA | `nvidia-smi` from `PATH`, `%ProgramFiles%\NVIDIA Corporation\NVSMI` or `C:\Windows\System32` | as on Linux | from the documentation |
+| Linux, AMD | `rocm-smi --json`, else `amd-smi metric --json`: clocks, power, temperature, VRAM | use, VRAM, PCIe link. Temperature and power when hwmon has them. No PCIe traffic | from the documentation |
+| Windows, AMD | none | none | from the documentation |
+| Intel (SYCL build) | none | use and VRAM with Strata's root sampler only. No PCIe traffic | from the documentation |
+| macOS (Metal build) | none | none | from the documentation |
+
+The Studio starts at most one GPU tool each second. It starts no tool when no page is open for 30 s.
+
+**Engine log: the lines of each Strata build**
+
+| Line | CUDA | HIP | SYCL | Metal |
+| --- | --- | --- | --- | --- |
+| PCIe probe (the measured link and CPU pool speeds) | with `--serve` | wave32 packs on gfx1200 and gfx1201 only | no | no |
+| VRAM warning | yes | yes | no | yes |
+| Pool workers and their CPUs | yes | yes | yes | yes |
+| Decode time split (`STRATA_DECODE_TIMING`) | yes | yes | yes, without the adapt share | yes |
+| Prompt read time split, KV streaming, cache hit rate | yes | yes | yes | no |
+| GPU stages | yes | yes | no | no |
+
+When a line is missing, its panel says "this build does not report" the value. The CPU block marks the pool-worker
+CPUs only when the engine log names them.
+
+### Report your PC
+
+Run the probe and give its output to the developers of the Studio, with your OS, CPU, GPU and Strata build:
+
+```
+python3 studio.py --host-probe --config ~/Strata/strata-swift-iq3_s.json
+py studio.py --host-probe --config C:\Strata\strata-swift-iq3_s.json        # Windows
+```
+
+For each reader, the probe prints "ok" or "no", the source (a file, a system call or a tool), and the first raw
+line. The probe starts each tool one time and stops. It does not connect to Strata. The output has file paths:
+remove your user name from them if you want. A report from your PC can change "from the documentation" to "on
+hardware" in the tables above.
 
 ## The views
 
@@ -102,9 +168,12 @@ better. Tables are in the detail views and behind **All numbers**.
   - Each block shows its main value, a use bar, figures and 2 to 4 sparklines of the last 60 s.
   - The CPU block shows each logical CPU (busy %, frequency). It marks the pool-worker CPUs and the host CPU from
     the engine log.
-  - The GPU block shows data from `nvidia-smi`: the SM and memory clocks against their maximum, and the memory
-    controller. It also shows the power against its limit, the temperature, the fan, the P-state, the PCIe link and
-    the clock limit reasons.
+  - The GPU block shows data from `nvidia-smi` (NVIDIA) or `rocm-smi` and `amd-smi` (AMD on Linux): the SM and
+    memory clocks against their maximum, and the memory controller. It also shows the power against its limit, the
+    temperature, the fan, the P-state and the PCIe link. The clock limit reasons are for NVIDIA only. Without a GPU
+    tool, the block shows Strata's own readings from `/metrics`.
+  - A reading that the Studio cannot get shows "not available", with the reason in one sentence. The Studio never
+    estimates a missing reading.
   - The block with the largest share of the last decode window has the **limit** mark.
   - The **experts** panel shows the expert flow in four paths. RAM to the CPU pool: computed. RAM over PCIe to the
     GPU: read over PCIe. RAM over PCIe to the VRAM cache: swapped in. VRAM cache to the GPU: cache hits. The path widths are the shares of the
@@ -173,8 +242,15 @@ better. Tables are in the detail views and behind **All numbers**.
   - A slider where the engine states a range.
   - A number field where the engine states no range. The hint says so.
   - The special values `auto` and `default` where the engine accepts them.
-  - **Reset**.
-- **Reset all to the engine defaults** stages a reset of each row.
+  - **Reset**. A calibrated setting goes back to the calibration's own default (Strata's `tools/calibrate.py`):
+    `--spec-min-p 0.5`, setup's value, and no value for the others, so the engine chooses. A flag with the mark
+    **set by setup** goes back to setup's value (`--spec 4`, `--expert-cache auto`). The Studio never removes a
+    flag that setup wrote. `--max-context` and `--kv-resident` have no reset: setup chose them for the VRAM and RAM
+    of this PC. To choose them again, run setup.
+- **Reset the calibrated settings** stages a reset of the settings that **Tune this PC** writes only.
+- Before each write, the Studio checks the engine's start-up rule for the pack. A native (IQ) pack needs
+  `--native`, `--spec T` (T >= 2) and `--prefill`. When the new file breaks the rule, the Studio does not write it
+  and shows the engine's own message.
 - The edits go into an edit list. **Write the edits** writes them after a dialog, with a `.bak` copy.
 - **Settings of a run** writes the values of one run into the file in the same way.
 
@@ -201,8 +277,10 @@ record none.
 
 **The run config file (`--config`).** The Studio writes it only after a dialog, from **Write the edits** or
 **Settings of a run** on the Settings page.
-- Only the selected settings change in `"args"`, `"env"` or the top-level key. A reset removes the value, so the
-  engine default applies.
+- Only the selected settings change in `"args"`, `"env"` or the top-level key. A reset writes the value of the
+  calibration or of setup, or removes a value that is not setup's. The Studio never removes a flag that setup wrote.
+- The Studio does not write a file that the engine would refuse at start (the pack rule above).
+- A file with CRLF line ends or a BOM (Windows) keeps them.
 - All other keys and arguments stay the same. The file keeps its indentation.
 - The Studio copies the file to `<file>.bak` first. It replaces an older `.bak`.
 - The Studio refuses the write in these cases:
@@ -219,8 +297,8 @@ record none.
 - It removes the copy when the run ends.
 - A request to Strata during the run loads the model again. Then the run fails.
 
-**What the Studio only reads:** the results folder, the engine log, the expert profiles, `/proc`, `/sys`,
-`nvidia-smi`, and Strata's routes.
+**What the Studio only reads:** the results folder, the engine log, the expert profiles, the host readers of
+[Support by system](#support-by-system), and Strata's routes.
 
 **What changes Strata's settings:** `POST /profile/tune`, Strata's own route, which **Tune this PC** calls, and the
 file writes above.
@@ -263,7 +341,10 @@ python3 -m unittest discover -s tests
 
 **The unit tests** need no Strata, no GPU and no network. They take about 20 s. `tests/fakestrata.py` is an
 in-process replacement for the routes of Strata. The parser tests use real lines and files from the development PC
-(`tests/fixtures/host`: `/proc/stat`, `nvidia-smi`, the engine log, the header of the expert profile).
+(`tests/fixtures/host`: `/proc/stat`, `nvidia-smi`, the engine log, the header of the expert profile). The tests
+of the other systems use outputs from the documentation of each tool (`tests/fixtures/host/doc`, not verified on
+hardware). Each reader gets its files and tool outputs as arguments, so the tests of each system run on each
+system.
 
 **The page check** opens each view and each state in headless Chromium against `tests/demo_strata.py`. The demo
 Strata replays recorded data: real reports, live samples, the `/metrics` hardware and the output of a real
@@ -284,6 +365,8 @@ The page check prints one PASS or FAIL line per check:
 - **Run a profile** and **Tune this PC** work from their buttons, and the tune ends with "succeeded".
 - an edit on the Settings page goes into the edit list, and a write leaves a `.bak` copy.
 - each state shows its message.
+- With host readings off (the state `host-off`, and each check with `--host-info off`), each view shows Strata's
+  own readings.
 
 The page check never connects to port 8080 and never writes a real Strata file.
 

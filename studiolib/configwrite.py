@@ -125,6 +125,8 @@ def apply(config_path, rep: dict, flags: list, sha: str, busy_reason: str | None
         r = by[f]
         if not r["changed"]:
             continue
+        if r["run"] is None and CONTROLS.get(_rid(f), {}).get("group") == "setup":
+            continue                                   # setup's flag: never removed (the report has no value)
         if r["kind"] == "arg":
             cfg["args"] = _set_arg(cfg["args"], f, r["run"])
         else:
@@ -140,15 +142,49 @@ def apply(config_path, rep: dict, flags: list, sha: str, busy_reason: str | None
     return _write(config_path, raw, cfg, changes)
 
 
+NATIVE_RULE = "it needs --native SHARD1, --spec T (T >= 2) and --prefill CHUNK"
+
+
+def pack_rule_error(cfg: dict) -> str | None:
+    """The engine's start-up rule for the pack, checked before a write: None when the engine accepts the args, else
+    the engine's own sentence.  A native (IQ) pack (setup writes --native for it) needs --native, --spec T (T >= 2)
+    and --prefill CHUNK (src/program/generate.cpp); without them the engine stops at start."""
+    args = [str(a) for a in (cfg.get("args") or [])]
+    if "--native" not in args:
+        return None
+    val = lambda f: args[args.index(f) + 1] if f in args and args.index(f) + 1 < len(args) else None
+    spec, prefill = val("--spec"), val("--prefill")
+    try:
+        spec_ok = spec is not None and int(spec) >= 2
+    except ValueError:
+        spec_ok = False
+    prefill_ok = prefill is not None and (prefill == "auto" or prefill.isdigit() and int(prefill) > 0)
+    if spec_ok and prefill_ok and val("--native"):
+        return None
+    pack = Path(val("--pack") or "the pack").name
+    return (f'Not written: the engine would not start. Its message: "{pack} is a native (IQ) pack: {NATIVE_RULE}". '
+            f'The new file has --spec {spec or "(none)"} and --prefill {prefill or "(none)"}.')
+
+
+def _rid(flag: str) -> str | None:
+    return next((r[0] for r in SPEED_SETTINGS if r[1] == flag), None)
+
+
 def _write(config_path, raw: bytes, cfg: dict, changes: list) -> dict:
+    why = pack_rule_error(cfg)
+    if why:
+        raise ConfigWriteError(400, why)
     text = raw.decode("utf-8-sig")
     new = json.dumps(cfg, indent=_indent(text), ensure_ascii=False) + ("\n" if text.endswith("\n") else "")
+    if b"\r\n" in raw:                                    # a file from Windows keeps its line ends
+        new = new.replace("\n", "\r\n")
+    data = (b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b"") + new.encode("utf-8")
     p = Path(config_path)
     bak = p.with_name(p.name + ".bak")
     tmp = p.with_name(p.name + ".studio-tmp")
     try:
         bak.write_bytes(raw)
-        tmp.write_text(new, encoding="utf-8")
+        tmp.write_bytes(data)                             # bytes: no newline translation on Windows
         os.replace(tmp, p)
     except OSError as e:
         try:
@@ -158,7 +194,7 @@ def _write(config_path, raw: bytes, cfg: dict, changes: list) -> dict:
         raise ConfigWriteError(500, f"The config file could not be written ({e.strerror or type(e).__name__}); "
                                     "it is unchanged.")
     return {"ok": True, "path": str(p), "backup": str(bak), "changes": changes,
-            "sha": hashlib.sha256(new.encode("utf-8")).hexdigest()}
+            "sha": hashlib.sha256(data).hexdigest()}
 
 
 def file_doc(config_path) -> dict:

@@ -238,8 +238,9 @@ class StudioApp:
 
     def host_doc(self) -> dict:
         if self.host_monitor is None:
-            return {"at": None, "cpu": None, "gpu": None, "history": {}, "core_history": {}, "gpu_error": None,
-                    "pool_cpus": None, "host_cpu": None}
+            return {"at": None, "cpu": None, "gpu": None, "memory": None, "disk": None, "history": {}, "core_history": {},
+                    "notes": {"cpu": "Host readings are off."}, "enabled": False, "os": None, "backend": "none",
+                    "gpu_source": "none", "gpu_error": None, "pool_cpus": None, "host_cpu": None}
         pool = (self.engine_log.facts() if self.engine_log else {}).get("pool") or {}
         return self.host_monitor.doc(pool.get("cpus"), pool.get("host_cpu"))
 

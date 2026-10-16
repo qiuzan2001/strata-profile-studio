@@ -4,13 +4,16 @@ Not a unit test (it needs Playwright and Chromium); run it by hand with a Python
 
     <venv>/bin/python tests/page_check.py [--out DIR] [--seed RESULTS] [--live live.json] [--hardware hw.json]
                                           [--settings settings.json] [--tunes state.json] [--quick]
+                                          [--host-info on|off]
 
 With no arguments it uses the fixture reports (tests/fixtures/reports) and synthetic readings.  --seed and the
 recorded files make the screenshots show real data (copies; the originals are only read).  For each state it starts
 a demo Strata and a Studio on ports above 8190, takes screenshots at 1400x900 light and dark and at 390x844, and
 prints one PASS/FAIL line per check: no script error, no horizontal scroll at 390 px, the PC diagram adds no node
 in a minute of updates, the tune flow runs from the button to the comparison, a profile run starts from the button,
-"use the settings of run X" writes the config copy and its .bak.  Never touches port 8080 or a real Strata file.
+"use the settings of run X" writes the config copy and its .bak.  --host-info off starts every Studio without host
+readings (every view then renders from /metrics, the engine log and the reports alone); the state "host-off" checks
+this in every run.  Never touches port 8080 or a real Strata file.
 """
 from __future__ import annotations
 
@@ -84,7 +87,7 @@ def get(url):
 class Scenario:
     """A demo Strata (unless `unreachable`) and a Studio, in their own temp folder."""
 
-    def __init__(self, a, name, state="ok", reports=True, unreachable=False, read_only=False):
+    def __init__(self, a, name, state="ok", reports=True, unreachable=False, read_only=False, host_info=None):
         self.name = name
         self.dir = Path(tempfile.mkdtemp(prefix=f"pagecheck-{name}-"))
         self.results = self.dir / "results"
@@ -118,6 +121,7 @@ class Scenario:
                "--config", str(self.config), "--state", str(self.state_file), "--engine-log", a.engine_log or str(self.dir / "none.log")]
         if read_only:
             cmd.append("--read-only")
+        cmd += ["--host-info", host_info or a.host_info]
         self.procs.append(subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
         wait_http(f"http://127.0.0.1:{self.port}/api/state")
         self.base = f"http://127.0.0.1:{self.port}"
@@ -166,6 +170,7 @@ def main():
     ap.add_argument("--tune-secs", type=float, default=30.0)
     ap.add_argument("--quick", action="store_true", help="the main views only, light desktop")
     ap.add_argument("--only", default="main,flow,states", help="which parts: main, flow, states")
+    ap.add_argument("--host-info", choices=("on", "off"), default="on", help="the Studio's host readings (default on)")
     a = ap.parse_args()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -221,7 +226,11 @@ def main():
             record("diagram: updates in place (node count stable over the wait)", n1 <= n0 + 2, f"{n0} -> {n1}")
             record("diagram: the readings move", len(seen) > 1, f"CPU readings seen: {sorted(seen)}")
             limit = page.evaluate("[...document.querySelectorAll('.blk.limit')].map(n => n.dataset.block).join(',')")
-            record("diagram: a bottleneck block is highlighted", bool(limit), limit)
+            win = get(f"{sc.base}/api/hardware").get("window") or {}
+            if win.get("window_ms"):
+                record("diagram: a bottleneck block is highlighted", bool(limit), limit)
+            else:                                             # the engine log has no time split: no limit to show
+                record("diagram: no bottleneck without a time split in the engine log", not limit, limit or "none")
             # settings: a hand edit is staged, shown in the edit list, and written with a .bak
             page.goto(f"{sc.base}/#settings")
             time.sleep(3)
@@ -232,6 +241,14 @@ def main():
             staged = page.evaluate("document.querySelector('.edits-card h4').textContent")
             record("settings: an edit is staged in the edit list", "1 setting changed" in staged, staged)
             page.screenshot(path=str(out / "main-settings-edit-light.png"), full_page=True)
+            page.locator("button.btn", has_text="Discard the edits").click()
+            # settings: "Reset the calibrated settings" stages the calibrated knobs only, never a flag setup wrote
+            page.locator("button.btn", has_text="Reset the calibrated settings").click()
+            time.sleep(0.5)
+            names = page.evaluate("[...document.querySelectorAll('.edits-card .diff b')].map(b => b.textContent)")
+            setup = [n for n in names if n in ("--spec", "--prefill", "--expert-cache", "--max-context", "--kv-resident", "--kv")]
+            record("settings: the calibrated reset keeps each flag setup wrote", not setup, f"staged {names}")
+            page.screenshot(path=str(out / "main-settings-reset-light.png"), full_page=True)
             page.locator("button.btn", has_text="Discard the edits").click()
             # settings: write the config copy with the settings of the tune's before run (or the oldest run)
             before_cfg = sc.config.read_text()
@@ -304,9 +321,10 @@ def main():
         states = [("first-run", dict(state="first-run")), ("no-reports", dict(state="first-run", reports=False)),
                   ("profile-off", dict(state="profile-off")), ("key", dict(state="key")),
                   ("unloaded", dict(state="unloaded")), ("unreachable", dict(unreachable=True)),
-                  ("tuning-elsewhere", dict(state="tuning-elsewhere")), ("read-only", dict(read_only=True))]
+                  ("tuning-elsewhere", dict(state="tuning-elsewhere")), ("read-only", dict(read_only=True)),
+                  ("host-off", dict(state="decoding", host_info="off"))]
         if a.quick:
-            states = states[:2]
+            states = states[:2] + states[-1:]
         if "states" not in parts:
             states = []
         for name, kw in states:
@@ -323,10 +341,22 @@ def main():
                 expect = {"first-run": "No requests since Strata started", "no-reports": "No requests since Strata started",
                           "profile-off": "Profiling is off", "key": "Strata needs an API key", "unloaded": "The model is not loaded",
                           "unreachable": "Strata does not answer", "tuning-elsewhere": "Strata runs a tune",
-                          "read-only": "read-only"}[name]
+                          "read-only": "read-only", "host-off": "Host readings are off"}[name]
                 if name == "read-only":
                     text += page.evaluate("document.querySelector('header').innerText")
                 record(f"state {name}: says so on the page", expect.lower() in text.lower(), expect)
+                if name == "host-off":
+                    host = get(f"{sc.base}/api/host")
+                    record("host-off: /api/host has no reading", host["cpu"] is None and host["gpu"] is None and not host["enabled"])
+                    big = page.evaluate("document.querySelector('.blk-cpu .blk-big').textContent")
+                    record("host-off: the CPU block shows Strata's own /metrics reading", any(c.isdigit() for c in big), big)
+                    vram = page.evaluate("document.querySelector('.blk-vram .blk-big').textContent")
+                    has = isinstance(get(f"{sc.base}/api/hardware").get("now", {}).get("gpu_mem_used"), (int, float))
+                    record("host-off: the VRAM block shows /metrics' reading, or '–' when /metrics has none",
+                           any(c.isdigit() for c in vram) == has, f"{vram} (/metrics has a reading: {has})")
+                    record("host-off: no 'not readable' text", "not readable" not in text.lower())
+                    cells = page.evaluate("[...document.querySelectorAll('.core')].filter(c => !c.hidden && c.offsetParent).length")
+                    record("host-off: no core grid without per-core readings", cells == 0, f"{cells} cells")
                 page.close()
             finally:
                 sc.close()

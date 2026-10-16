@@ -41,6 +41,14 @@ def parse(lines) -> dict:
     return {"probe": probe, "vram_warning": warn, "probes": n, "pool": pool}
 
 
+# which builds print each line (src/program/generate.cpp; the SYCL build has its own fork of that file)
+PRINTED_BY = {
+    "probe": "CUDA builds with --serve and no --pcie-frac (AMD HIP: gfx1200/gfx1201 native packs only; not SYCL)",
+    "pool": "all builds, once at the engine start",
+    "vram_warning": "CUDA, HIP and Metal builds, when less than 512 MiB of VRAM is free (1024 MiB on Windows)",
+}
+
+
 class EngineLog:
     def __init__(self, path):
         self.path = str(path) if path else None
@@ -49,7 +57,13 @@ class EngineLog:
         self._val = {"probe": None, "vram_warning": None, "probes": 0, "pool": None}
 
     def facts(self) -> dict:
-        """The newest facts; {"path": None, ...} when no log is known or it cannot be read."""
+        """The newest facts; {"path": None, ...} when no log is known or it cannot be read.  `missing`: the lines this
+        log has not printed (yet), so the page can say "this build does not report ..."."""
+        out = self._facts()
+        out["missing"] = [k for k in ("probe", "pool", "vram_warning") if not out.get(k)]
+        return out
+
+    def _facts(self) -> dict:
         out = {"path": self.path, "readable": False, **self._val}
         if not self.path:
             return out

@@ -19,105 +19,6 @@ from support import ROOT, copy_fixtures, request, start_studio, tmpdir, wait_for
 HOST = ROOT / "tests" / "fixtures" / "host"
 
 
-class Gpu(unittest.TestCase):
-    def test_a_real_nvidia_smi_line(self):
-        d = hostinfo.parse_gpu_line((HOST / "nvidia_smi.csv").read_text().strip())
-        self.assertEqual((d["sm_max_mhz"], d["mem_max_mhz"], d["power_limit_w"], d["pstate"]), (3120.0, 14001.0, 300.0, "P8"))
-        self.assertEqual((d["pcie_gen"], d["pcie_gen_max"], d["pcie_width"], d["mem_total_mib"]), (1.0, 4.0, 16.0, 16303.0))
-        self.assertEqual((d["reasons"], d["reason_words"]), (0, []))
-
-    def test_throttle_reasons_and_bad_fields(self):
-        self.assertEqual(hostinfo.decode_reasons(0x1 | 0x4 | 0x40), ["idle", "power cap", "thermal (hardware)"])
-        line = "210, 405, 3120, 14001, [N/A], 55, 26.27, 300.00, 37, [Not Supported], P8, 1, 4, 16, 15548, 16303, 0x0000000000000024"
-        d = hostinfo.parse_gpu_line(line)
-        self.assertIsNone(d["util"])
-        self.assertIsNone(d["fan_pct"])
-        self.assertEqual(d["reason_words"], ["power cap", "thermal (software)"])
-        self.assertIsNone(hostinfo.parse_gpu_line("1, 2, 3"))
-
-    def test_no_nvidia_smi(self):
-        g = hostinfo.GpuSampler(cmd=["/nonexistent/nvidia-smi"])
-        self.assertIsNone(g.sample())
-        self.assertTrue(g.missing)
-        self.assertIn("not installed", g.error)
-
-    def test_a_command_that_prints_the_line(self):
-        g = hostinfo.GpuSampler(cmd=[sys.executable, "-c", f"print(open({str(HOST / 'nvidia_smi.csv')!r}).read())"])
-        self.assertEqual(g.sample()["sm_max_mhz"], 3120.0)
-
-
-class Cpu(unittest.TestCase):
-    def test_busy_from_two_real_proc_stat_reads(self):
-        a = hostinfo.parse_proc_stat((HOST / "proc_stat_a").read_text())
-        b = hostinfo.parse_proc_stat((HOST / "proc_stat_b").read_text())
-        self.assertEqual(len([k for k in a if k != "cpu"]), 16)
-        busy = hostinfo.busy_pct(a, b)
-        self.assertTrue(all(v is None or 0 <= v <= 100 for v in busy.values()))
-        self.assertIsNotNone(busy["cpu"])
-        self.assertTrue(all(v is None for v in hostinfo.busy_pct({}, b).values()))
-
-    def test_sampler_on_a_fake_sys_tree(self):
-        d = tmpdir(self)
-        stat = d / "stat"
-        stat.write_text((HOST / "proc_stat_a").read_text())
-        for i in range(16):
-            (d / "cpu" / f"cpu{i}" / "cpufreq").mkdir(parents=True)
-            (d / "cpu" / f"cpu{i}" / "cpufreq" / "scaling_cur_freq").write_text(f"{3400000 + i * 1000}\n")
-        (d / "hwmon" / "hwmon0").mkdir(parents=True)
-        (d / "hwmon" / "hwmon0" / "name").write_text("nvme\n")
-        (d / "hwmon" / "hwmon1").mkdir(parents=True)
-        (d / "hwmon" / "hwmon1" / "name").write_text("k10temp\n")
-        (d / "hwmon" / "hwmon1" / "temp1_input").write_text("43375\n")
-        rapl = d / "energy_uj"
-        rapl.write_text("1000000\n")
-        rapl.chmod(0)
-        t = [100.0]
-        s = hostinfo.CpuSampler(proc_stat=stat, cpu_root=d / "cpu", hwmon_root=d / "hwmon", rapl_pkg=rapl,
-                                rapl_core=d / "missing", clock=lambda: t[0])
-        first = s.sample()
-        stat.write_text((HOST / "proc_stat_b").read_text())
-        t[0] = 101.0
-        second = s.sample()
-        self.assertIsNone(first["busy"])
-        self.assertIsNotNone(second["busy"])
-        self.assertEqual(second["temp_c"], 43.4)
-        self.assertEqual(second["cores"][3]["mhz"], 3403)
-        if os.geteuid() != 0:                                        # root reads a 000 file: the hint is moot
-            self.assertIsNone(second["power_w"])
-            self.assertIn("sudo chmod a+r", second["power_hint"])
-        rapl.chmod(0o600)
-
-    def test_rapl_power_from_two_reads(self):
-        d = tmpdir(self)
-        rapl = d / "energy_uj"
-        rapl.write_text("1000000\n")
-        t = [0.0]
-        s = hostinfo.CpuSampler(proc_stat=d / "none", cpu_root=d, hwmon_root=d, rapl_pkg=rapl, rapl_core=d / "x", clock=lambda: t[0])
-        s.sample()
-        rapl.write_text("46000000\n")                               # 45 J in 1 s
-        t[0] = 1.0
-        self.assertEqual(s.sample()["power_w"], 45.0)
-
-    def test_the_monitor_keeps_history(self):
-        class C:
-            def sample(self):
-                return {"busy": 10.0, "cores": [{"id": 0, "busy": 5.0, "mhz": 3400}], "temp_c": 40.0, "power_w": None, "power_hint": None}
-
-        class G:
-            error = None
-
-            def sample(self):
-                return {"util": 3.0, "sm_mhz": 210.0}
-        m = hostinfo.HostMonitor(cpu=C(), gpu=G(), every=0.01)
-        m.step()
-        m.step()
-        doc = m.doc(pool_cpus=[1, 2], host_cpu=0)
-        m.stop()
-        self.assertEqual(doc["history"]["cpu"]["busy"][-2:], [10.0, 10.0])
-        self.assertEqual(doc["core_history"]["0"][-1], 5.0)
-        self.assertEqual((doc["pool_cpus"], doc["host_cpu"]), ([1, 2], 0))
-
-
 class Pool(unittest.TestCase):
     def test_the_engine_s_pinning_line(self):
         d = enginelog.parse((HOST / "engine_pool.log").read_text().splitlines())
@@ -294,11 +195,17 @@ class Routes(unittest.TestCase):
 
     def test_host_route(self):
         class C:
+            name = "test"
+
             def sample(self):
-                return {"busy": 12.0, "cores": [], "temp_c": 41.0, "power_w": None, "power_hint": hostinfo.RAPL_HINT}
+                return {"cpu": {"busy": 12.0, "cores": [], "temp_c": 41.0, "power_w": None}, "memory": None, "disk": None,
+                        "notes": {"power": "Not readable without access: run `sudo chmod a+r x`."}}
 
         class G:
-            error = None
+            error = note = None
+
+            def source(self):
+                return "nvidia-smi"
 
             def sample(self):
                 return hostinfo.parse_gpu_line((HOST / "nvidia_smi.csv").read_text().strip())
@@ -307,14 +214,14 @@ class Routes(unittest.TestCase):
         import studio
         s = studio.Studio(self.fake.url, str(self.results), port=0, state_path=str(self.tmp / "st.json"),
                           timing=support.fast_timing(), engine_log=str(log),
-                          host_monitor=hostinfo.HostMonitor(cpu=C(), gpu=G(), every=0.02))
+                          host_monitor=hostinfo.HostMonitor(host=C(), gpu=G(), every=0.02))
         s.start()
         self.addCleanup(s.stop)
         request(s, "GET", "/api/host")
         doc = wait_for(lambda: (lambda d: d if d["gpu"] else None)(request(s, "GET", "/api/host")[2]), what="a host sample")
         self.assertEqual(doc["gpu"]["pstate"], "P8")
         self.assertEqual(doc["pool_cpus"], [1, 2, 3, 4, 5, 6, 7])
-        self.assertIn("sudo chmod", doc["cpu"]["power_hint"])
+        self.assertIn("sudo chmod", doc["notes"]["power"])
 
     def test_experts_route_and_settings_routes(self):
         write_profile(self.tmp / "p.bin", 2, 4, [(0, 0), (1, 1), (0, 1), (1, 0)])

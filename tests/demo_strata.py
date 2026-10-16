@@ -159,9 +159,9 @@ def animate(fake: DemoStrata, decoding: bool, stop: threading.Event, samples=())
                 fake.live_state = {"state": "generating", "tok_s": round(76 + 6 * wave, 1)}
             else:
                 hw.update({k: base.get(k) for k in ("gpu_util", "cpu", "gpu_power", "gpu_pcie_rx_mb", "gpu_pcie_tx_mb")})
-            for k in ("gpu_util", "cpu", "gpu_pcie_rx_mb", "gpu_power"):
-                seq = fake.hw_history.setdefault(k, [])
-                seq.append(hw.get(k))
+            for key in ("gpu_util", "cpu", "gpu_pcie_rx_mb", "gpu_power"):   # not `k`: that counts the requests
+                seq = fake.hw_history.setdefault(key, [])
+                seq.append(hw.get(key))
                 del seq[:-60]
 
 

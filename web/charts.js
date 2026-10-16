@@ -447,7 +447,8 @@
       r.band = el('i', { class: 'bar-band', hidden: true });
       r.val = el('span', { class: 'bar-val num', text: '' });
       r.track = el('div', { class: 'bar-track' }, r.bar, r.band);
-      r.icon = el('span', { class: 'bar-icon' });
+      r.kind = S.liveKindIcon();
+      r.icon = el('span', { class: 'bar-icon' }, r.kind.node);
       r.row = el('div', { class: 'bar-row with-note', dataset: { key: k } },
         el('div', { class: 'bar-label' }, r.icon, el('div', { class: 'bar-names' }, r.name, r.note)), r.track, r.val);
       node.appendChild(r.row);
@@ -479,7 +480,7 @@
           S.setAttr(r.bar, 'class', `bar ${it.cls || 'k-bar'} ${it.hl ? 'hl' : ''}`);
           S.setClass(r.row, 'hl', !!it.hl);
           S.setClass(r.row, 'clickable', !!it.onclick);
-          if (it.iconKind && r.icon._kind !== it.iconKind) { S.fill(r.icon, S.kindIcon(it.iconKind)); r.icon._kind = it.iconKind; }
+          r.kind.set(it.iconKind || null);
           const w = isNum(it.value) ? Math.max(0.4, (it.value / max) * 100) : 0;
           S.setStyle(r.bar, 'width', `${w.toFixed(2)}%`);
           const sp = it.spread && isNum(it.spread[0]) && isNum(it.spread[1]) ? it.spread : null;

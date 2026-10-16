@@ -77,6 +77,24 @@ CONTROLS = {
                             "source": "a file path; the engine saves its learned profile there every 10 min"},
 }
 
+# What a Reset writes, per setting (the Settings page's Reset and "Reset the calibrated settings"):
+#   calibration: the knobs Tune this PC writes.  Their reset is the calibration's own (Strata's tools/calibrate.py
+#     DEFAULTS): setup's --spec-min-p 0.5, else no value (the engine's choice).  The prefill CPU share env: no value.
+#   setup: the flags setup.py writes for this install.  Never removed: a native (IQ) pack needs --spec T (T >= 2) and
+#     --prefill, and --max-context and --kv-resident fit this PC's VRAM and RAM.  Reset writes setup's value where
+#     setup always writes the same one (--spec 4, --expert-cache auto); KEEP: no reset (run setup again).
+#   user: the user's own flags.  Reset removes the value.
+KEEP = "keep"
+RESET = {"pcie_frac": ("calibration", None), "spec_min_p": ("calibration", "0.5"), "pool_workers": ("calibration", None),
+         "adapt_every": ("calibration", None), "adapt_swaps": ("calibration", None), "adapt_decay": ("calibration", None),
+         "prefill_cpu_share": ("calibration", None), "prefill_cpu_share_max": ("calibration", None),
+         "spec": ("setup", "4"), "expert_cache": ("setup", "auto"), "kv_resident": ("setup", KEEP),
+         "max_context": ("setup", KEEP), "vram_reserve_mib": ("user", None), "expert_profile_save": ("user", None)}
+for _rid, (_group, _to) in RESET.items():
+    CONTROLS[_rid]["group"], CONTROLS[_rid]["reset_to"] = _group, _to
+    if _group == "setup":                                 # no "default": removing the flag can stop the engine
+        CONTROLS[_rid]["specials"] = [x for x in CONTROLS[_rid]["specials"] if x != "default"]
+
 
 def check_value(rid: str, value) -> str | None:
     """None when `value` is valid for the setting `rid`, else the reason.  `value` None means "default"."""
@@ -84,6 +102,8 @@ def check_value(rid: str, value) -> str | None:
     if spec is None:
         return f"{rid} cannot be edited here."
     if value is None:
+        if spec.get("group") == "setup":
+            return "setup wrote this flag for this install. The Studio does not remove it. Give a value."
         return None
     v = str(value).strip()
     if v in spec.get("specials", []) and v != "default":
