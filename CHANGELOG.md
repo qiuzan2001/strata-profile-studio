@@ -2,7 +2,7 @@
 
 One PC measured the numbers below: RTX 5070 Ti 16 GB, Ryzen 7 5800X3D, Swift 1.5 IQ3_S, 2026-10-15.
 
-## Unreleased
+## 0.1.1 (2026-10-16)
 
 - **Stock mode: Strata 0.1.44.1 as released.** That build has no `/profile` routes and no `tools/strata_profile.py`.
   Two users reported that the Studio then said "Profiling is off" and that `"profile": true` did nothing. Now a 404
