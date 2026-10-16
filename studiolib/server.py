@@ -13,7 +13,7 @@ import socket
 import urllib.parse
 from pathlib import Path
 
-from . import __version__, calibparse, compare as compare_mod, configwrite, settings as settings_mod
+from . import __version__, calibparse, cardmake, compare as compare_mod, configwrite, settings as settings_mod
 from .flow import FlowError
 from .poller import MSG_KEY, MSG_PROFILE_OFF
 from .reports import REPORT_ID_RE, ReportError
@@ -23,7 +23,7 @@ from .strata import StrataError
 MAX_POST = 64 * 1024
 STATIC = {name: "text/javascript; charset=utf-8" for name in
           ("lib.js", "charts.js", "diagram.js", "panel.js", "now.js", "runs.js", "compare.js", "expertmap.js", "tune.js",
-           "settings.js", "app.js",
+           "settings.js", "share.js", "app.js",
            "vendor/chart-4.4.1.umd.js")}
 STATIC.update({"style.css": "text/css; charset=utf-8", "favicon.svg": "image/svg+xml"})
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "
@@ -53,6 +53,7 @@ class StudioApp:
         self.engine_log = engine_log
         self.read_only = bool(read_only)
         self.host_monitor, self.profiles, self.defaults_run = host_monitor, profiles, defaults_run
+        self._card_png = {}
 
     @staticmethod
     def split_host(header: str) -> tuple[str, str | None]:
@@ -235,6 +236,48 @@ class StudioApp:
                 t["candidates"] = calibparse.parse(lines, was)
             out.append(t)
         return {"tunes": out}
+
+    # ------------------------------------------------------------------------------------------------ cards
+    def card_facts(self) -> dict:
+        log = self.engine_log.facts() if self.engine_log else None
+        gpu = self.host_monitor.doc().get("gpu") if self.host_monitor is not None else None
+        return cardmake.facts_from(log, gpu)
+
+    def card(self, rid: str, name: str) -> dict:
+        return cardmake.card_of_store(self.reports, rid, state=self.state, facts=self.card_facts(), name=name)
+
+    def card_doc(self, rid: str, name: str, with_image: bool) -> dict:
+        """The card and what the Share dialog shows: the JSON, its size, the exclusions, and the image (the PNG
+        when this PC has a renderer, else the SVG) as base64, because an <img> cannot send the Studio's key."""
+        import base64
+        import tempfile
+        from cards import render
+        card = self.card(rid, name)
+        doc = {"card": card, "bytes": len(json.dumps(card, indent=1, ensure_ascii=False).encode("utf-8")) + 1,
+               "excluded": list(render.EXCLUDED), "renderer": render.renderer()["note"]}
+        if with_image:
+            svg = render.card_svg(card)
+            image = {"type": "svg", "data": base64.b64encode(svg.encode("utf-8")).decode("ascii")}
+            if card["id"] in self._card_png:
+                image = self._card_png[card["id"]]
+            elif render.renderer()["kind"]:
+                with tempfile.TemporaryDirectory(prefix="studio-card-") as d:
+                    sp, pp = Path(d) / "card.svg", Path(d) / "card.png"
+                    sp.write_text(svg, encoding="utf-8")
+                    ok, _ = render.write_png(card, sp, pp)
+                    if ok:
+                        image = {"type": "png", "data": base64.b64encode(pp.read_bytes()).decode("ascii")}
+                        self._card_png = {card["id"]: image}          # one entry: the run the dialog shows
+            doc["image"] = image
+        return doc
+
+    def card_files(self, rid: str, name: str) -> dict:
+        """Destination 3 of the Share dialog: the card files in <the state file's folder>/card-files/<id>/."""
+        from cards import render
+        card = self.card(rid, name)
+        res = render.write_files(card, Path(self.state.path).resolve().parent / "card-files" / card["id"])
+        res["id"] = card["id"]
+        return res
 
     def host_doc(self) -> dict:
         if self.host_monitor is None:
@@ -455,6 +498,12 @@ def make_handler(app: StudioApp):
                 return self._json(200, app.run_doc())
             if path == "/api/tunes":
                 return self._json(200, app.tunes_doc())
+            if path == "/api/card":
+                try:
+                    return self._json(200, app.card_doc((query.get("report") or [""])[0], (query.get("name") or [""])[0],
+                                                        (query.get("image") or ["1"])[0] != "0"))
+                except cardmake.CardError as e:
+                    return self._error(400, str(e))
             self._error(404, "Not found.")
 
         def _report(self, rid: str):
@@ -546,6 +595,14 @@ def make_handler(app: StudioApp):
                     return self._error(e.status, e.message)
             if path == "/api/run-defaults":
                 return self._run_defaults()
+            if path == "/api/card/files":
+                rid, name = body.get("report"), body.get("name") or ""
+                if not isinstance(rid, str) or not isinstance(name, str):
+                    return self._error(400, "The request needs \"report\" (a report id) and an optional \"name\".")
+                try:
+                    return self._json(200, app.card_files(rid, name))
+                except cardmake.CardError as e:
+                    return self._error(400, str(e))
             self._error(404, "Not found.")
 
         def _run_profile(self, body: dict):

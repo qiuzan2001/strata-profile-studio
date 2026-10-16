@@ -189,6 +189,13 @@ def parse_args(argv=None):
                     help="Strata's engine log, read only (default: the config's \"log\" key, or strata-<model>.log "
                          "next to it): the PC diagram's PCIe link ceiling")
     ap.add_argument("--state", default=None, help="the state file (default studio-state.json next to studio.py)")
+    ap.add_argument("--card", metavar="REPORT",
+                    help="write a result card of one profile report (its folder or its results.json): card.html, "
+                         "card.svg, card.json and card.png (the PNG needs a headless Chrome, Chromium or Edge, or "
+                         "Pillow), then stop. Nothing is sent")
+    ap.add_argument("--out", metavar="DIR", help="with --card: the folder for the files (default strata-card-<id>)")
+    ap.add_argument("--name", default="", help="with --card: an optional name on the card (at most 12 characters: "
+                                                "letters, digits, space, - and _)")
     ap.add_argument("--demo", action="store_true",
                     help="try the Studio without Strata: a demo Strata with the recorded data of one PC "
                          "(tests/fixtures/demo) and the Studio against it, in this process; Ctrl-C stops both")
@@ -280,8 +287,40 @@ def run_demo(a) -> int:
     return 0
 
 
+def card_command(a) -> int:
+    """`studio.py --card <report>`: the card files on this PC.  Reads the report folder, the engine log (the probe
+    line) and, with host readings on, the GPU tool once.  Writes only into --out."""
+    from cards import render
+    from studiolib.cardmake import CardError, card_of_path, facts_from
+    state = State(a.state or ROOT / "studio-state.json")
+    try:
+        state.load()
+    except StateError:
+        state = None
+    log = EngineLog(a.engine_log or default_engine_log(a.config)).facts() if (a.engine_log or a.config) else None
+    gpu = None
+    if a.host_info == "on":
+        try:
+            from studiolib.hostinfo import GpuReader
+            gpu = GpuReader().sample()
+        except Exception:                                 # noqa: BLE001 - no GPU tool: the card says "not reported"
+            gpu = None
+    try:
+        card = card_of_path(a.card, state=state, facts=facts_from(log, gpu), name=a.name)
+    except CardError as e:
+        print(f"No card: {e}", flush=True)
+        return 1
+    res = render.write_files(card, Path(a.out or f"strata-card-{card['id']}"))
+    print(f"Card {card['id']} in {res['dir']}: {', '.join(res['files'])}", flush=True)
+    print(f"PNG: {'made with ' + res['renderer'] if res['png'] else res['renderer']}", flush=True)
+    print("Not in the card: " + " · ".join(render.EXCLUDED) + ". Nothing was sent.", flush=True)
+    return 0
+
+
 def main(argv=None) -> int:
     a = parse_args(argv)
+    if a.card:
+        return card_command(a)
     if a.demo:
         return run_demo(a)
     a.port = 8090 if a.port is None else a.port

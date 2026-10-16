@@ -139,6 +139,7 @@
       ...keys.map(([k, label]) => ({ label, get: (r) => (r.settings_short || {})[k] ?? '–' })),
       { label: 'same settings', get: (r) => gIndex.get(r.id) || '', title: 'runs with identical settings share a group: their spread is the noise' },
       { label: 'tune', get: (r) => tuneLabel(A, r.tune) }, { label: 'note', get: (r) => r.note || '' },
+      ...(A.readOnly() ? [] : [{ label: 'card', get: (r) => shareButton(A, r.id) }]),
     ];
     const rows = A.reports.map((r) => (r.ok ? Object.assign({}, r, { _onclick: () => S.go(`#runs/${r.id}`), _cls: sel(r.id) ? 'sel' : '' }) : Object.assign({}, r, { _cls: 'bad' })));
     const c4 = S.card({ q: 'All runs', sub: 'decode speed per workload, tok/s · only the settings that differ · select A and B, or a row', cls: 'span3',
@@ -170,7 +171,8 @@
       el('a', { href: '#runs', class: 'back', text: '← Runs' }),
       el('h2', { text: `${name[0].toUpperCase()}${name.slice(1)}` }),
       el('span', { class: 'muted', text: `${S.clock(meta.mtime, true)} · ${S.dur(doc.elapsed_s)}${meta.tune ? ` · ${tuneLabel(A, meta.tune)}` : ''}` }),
-      el('span', { class: 'grow' }), pick, S.button('Save as image', () => shareCard(A, doc, name), 'small'));
+      el('span', { class: 'grow' }), pick, S.button('Save as image', () => shareCard(A, doc, name), 'small'),
+      A.readOnly() ? null : S.button('Share', () => S.shareRun(A, id), 'small', { title: 'Make the result card of this run. It shows the card and its JSON first.' }));
     const agentV = (doc.agent || []).map((t) => t.decode_tps).filter(isNum);
     const tiles = el('div', { class: 'tiles' },
       S.tile('Chat decode', S.num(dec.chat && dec.chat.tps.median, 1), 'tok/s', dec.chat ? `median of ${dec.chat.tps.n} · ${S.num(dec.chat.tps.min, 1)}–${S.num(dec.chat.tps.max, 1)}` : '', 'hero'),
@@ -235,6 +237,12 @@
   }
 
   // a shareable card of the run's headline numbers (ModelDock): drawn on a canvas, saved as PNG
+  function shareButton(A, id) {
+    const b = S.button('Share', (e) => { e.stopPropagation(); S.shareRun(A, id); }, 'small', { title: 'Make the result card of this run' });
+    b.addEventListener('click', (e) => e.stopPropagation());
+    return b;
+  }
+
   function shareCard(A, doc, name) {
     const c = document.createElement('canvas');
     const W = 1200, H = 630;
