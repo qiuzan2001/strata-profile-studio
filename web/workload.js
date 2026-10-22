@@ -1,6 +1,6 @@
 /* Strata Profile Studio: the workload pane of the Tune view.  What the requests of this PC look like (read from the
-   engine log), the five scenario presets, and the preset that is closest.  The presets are assumed shapes. They are not
-   measurements.  The tune card (mytune.js) sits in the same pane.  The counts only read: they write no file. */
+   engine log) and ideas for them.  The tune card (mytune.js) sits in the same pane.  The counts only read: they write
+   no file. */
 'use strict';
 
 (function () {
@@ -58,35 +58,6 @@
       splitBar(m.prompt_share));
   }
 
-  function presetCard(d) {
-    const rows = [];
-    const m = d.mine;
-    if (m) {
-      rows.push({
-        name: 'Your requests', prompt: tok(m.prompt_tokens.median), reused: S.pct(m.reused), reply: tok(m.generated.median),
-        share: splitBar(m.prompt_share, true), pshare: S.pct(m.prompt_share), close: '', _cls: 'mine', about: 'Measured in your engine log.',
-      });
-    }
-    for (const p of d.presets) {
-      rows.push({
-        name: p.name, prompt: tok(p.prompt_tokens), reused: S.pct(p.reused), reply: tok(p.generated),
-        share: splitBar(p.estimated_prompt_share, true), pshare: S.pct(p.estimated_prompt_share), close: p.id === d.closest ? S.chip('Closest', 'good') : '', about: p.about,
-      });
-    }
-    const cols = [
-      { label: 'Scenario', key: 'name' },
-      { label: 'Prompt', key: 'prompt', num: true },
-      { label: 'Reused', key: 'reused', num: true },
-      { label: 'Reply', key: 'reply', num: true },
-      { label: 'Prompt time', key: 'pshare', num: true, title: 'The share of the time in the prompt read. For a preset: an estimate from the speeds in your engine log' },
-      { label: 'Time split', get: (r) => r.share },
-      { label: '', get: (r) => r.close },
-      { label: 'About', key: 'about' },
-    ];
-    return S.card({ q: 'Which scenario is this?', sub: 'The shapes of the presets are assumed. The time split of a preset is an estimate from your own speeds.' },
-      S.table(cols, rows));
-  }
-
   function leverCard(d) {
     if (!d.levers.length) return null;
     const rows = d.levers.map((l) => ({ kind: l.kind, text: l.text, basis: l.basis }));
@@ -106,9 +77,9 @@
     } else if (!doc) {
       body.push(el('p', { class: 'note', text: 'Reading the engine log…' }));
     } else if (!doc.mine) {
-      body.push(el('p', { class: 'note', text: doc.note || 'No request is available.' }), S.mytune.card(A), presetCard(doc));
+      body.push(el('p', { class: 'note', text: doc.note || 'No request is available.' }), S.mytune.card(A));
     } else {
-      body.push(tiles(doc.mine), timeCard(doc.mine), S.mytune.card(A), leverCard(doc), presetCard(doc));
+      body.push(tiles(doc.mine), timeCard(doc.mine), S.mytune.card(A), leverCard(doc));
       body.push(el('p', { class: 'note', text: `The log holds ${S.int(doc.found)} requests in its last 8 MiB. The log may include requests from the profile and the tune.` }));
     }
     S.fill(host, ...body);

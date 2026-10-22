@@ -8,10 +8,12 @@ from pathlib import Path
 import support
 from fakestrata import FakeStrata
 from studiolib import mytune, replay
+from test_workload import line
 
 CONFIG = {"exe": "engine/strata", "args": ["--native", "x.gguf", "--pcie-frac", "0.55", "--spec-min-p", "0.5",
                                               "--spec", "3", "--prefill", "2048"]}
-OPTS = {"preset": "browser", "rounds": 5}
+OPTS = {"rounds": 5}
+SMALL = [line(3000, 1000, 60, 1000, 800), line(3500, 1000, 80, 1200, 900), line(4000, 1500, 100, 1300, 1000)]   # small shapes keep the tests fast
 OK_CMD = [sys.executable, "-c", "pass"]
 
 
@@ -50,12 +52,14 @@ class Loop(unittest.TestCase):
         self.addCleanup(self.fake.stop)
         self.config = self.tmp / "run.json"
         self.config.write_text(json.dumps(CONFIG, indent=2))
+        self.log = self.tmp / "e.log"
+        self.log.write_text("\n".join(SMALL) + "\n")                  # the shapes of the tune come from the log
         self.client = replay.Client(self.fake.url, timeout=10)
 
     def tune(self, **kw):
         kw.setdefault("sleep", lambda s: None)
         kw.setdefault("quiet_s", 0.0)
-        return mytune.MyTune(self.client, kw.pop("engine_log", None), str(self.config), **kw)
+        return mytune.MyTune(self.client, kw.pop("engine_log", str(self.log)), str(self.config), **kw)
 
     def run_tune(self, opts, **kw):
         mt = self.tune(**kw)
@@ -231,12 +235,24 @@ class Loop(unittest.TestCase):
             mt.cancel_event.set()
             wait_done(mt)
 
-    def test_a_bad_preset_is_refused_by_the_plan(self):
-        with self.assertRaises(mytune.TuneError):
-            self.tune().plan({"preset": "nope"})
+    def test_without_requests_in_the_log_there_is_no_shape_and_the_run_fails(self):
+        self.log.write_text("nothing here\n")
+        mt = self.tune()
+        p = mt.plan({})
+        self.assertEqual(p["shapes"], [])
+        self.assertIn("no request of 2,000 prompt tokens", p["note"])
+        mt.start(OPTS)
+        st = wait_done(mt)
+        self.assertEqual(st["state"], "failed")
+        self.assertEqual(self.fake.requests_to("/v1/chat/completions"), [])
+
+    def test_without_an_engine_log_the_plan_says_so(self):
+        p = self.tune(engine_log=None).plan({})
+        self.assertEqual(p["shapes"], [])
+        self.assertIn("--engine-log", p["note"])
 
     def test_the_plan_names_arms_rounds_and_current_values(self):
-        p = self.tune().plan({"preset": "browser"})
+        p = self.tune().plan({})
         self.assertEqual(p["current"], {"pcie_frac": 0.55, "spec_min_p": 0.5})
         self.assertEqual(p["rounds"], 5)
         self.assertEqual(len(p["arms"]), 5)
@@ -244,9 +260,9 @@ class Loop(unittest.TestCase):
         self.assertFalse(p["restart_command"])
 
     def test_the_plan_from_the_log_uses_its_requests(self):
-        from test_workload import AGENT
+        from test_workload import line
         log = self.tmp / "e.log"
-        log.write_text("\n".join(AGENT * 3) + "\n")
+        log.write_text("\n".join(SMALL) + "\n")
         p = self.tune(engine_log=str(log)).plan({})
         self.assertGreaterEqual(len(p["shapes"]), 1)
         self.assertIn("requests of your log", p["note"])
@@ -261,11 +277,13 @@ class Route(unittest.TestCase):
         self.addCleanup(self.fake.stop)
         self.config = self.tmp / "run.json"
         self.config.write_text(json.dumps(CONFIG, indent=2))
+        (self.tmp / "e.log").write_text("\n".join(SMALL) + "\n")
 
     def studio(self, **kw):
         import studio
         s = studio.Studio(self.fake.url, str(self.results), port=0, state_path=str(self.tmp / "st.json"),
                           timing=support.fast_timing(), config=str(self.config), engine_log=str(self.tmp / "e.log"), **kw)
+        s.mytune.quiet_s = 0.0                                  # the log was just written: do not wait for it to go quiet
         s.start()
         self.addCleanup(s.stop)
         support.wait_for(lambda: s.poller.status == "ok", what="a connected poller")
@@ -275,19 +293,17 @@ class Route(unittest.TestCase):
         s = self.studio()
         st, _, doc = support.request(s, "GET", "/api/mytune")
         self.assertEqual((st, doc["state"]), (200, "idle"))
-        st, _, plan = support.request(s, "GET", "/api/mytune/plan?preset=chat&quick=1")
+        st, _, plan = support.request(s, "GET", "/api/mytune/plan?quick=1")
         self.assertEqual(st, 200)
         self.assertEqual(plan["arms"], ["pcie_frac 0.35", "pcie_frac 0.75"])
-        st, _, _ = support.request(s, "GET", "/api/mytune/plan?preset=nope")
-        self.assertEqual(st, 400)
 
     def test_start_needs_confirm_then_runs_and_cancel_is_refused_when_idle(self):
         s = self.studio()
         st, _, _ = support.request(s, "POST", "/api/mytune/cancel", {})
         self.assertEqual(st, 409)
-        st, _, _ = support.request(s, "POST", "/api/mytune", {"preset": "chat"})
+        st, _, _ = support.request(s, "POST", "/api/mytune", {})
         self.assertEqual(st, 400)
-        st, _, doc = support.request(s, "POST", "/api/mytune", {"preset": "chat", "quick": True, "confirm": True})
+        st, _, doc = support.request(s, "POST", "/api/mytune", {"quick": True, "confirm": True})
         self.assertEqual((st, doc), (200, {"ok": True}))
         support.wait_for(lambda: support.request(s, "GET", "/api/mytune")[2]["state"] not in ("running",),
                          timeout=60, what="the tune to end")
@@ -297,7 +313,7 @@ class Route(unittest.TestCase):
 
     def test_apply_without_restart_command_is_refused(self):
         s = self.studio()
-        st, _, doc = support.request(s, "POST", "/api/mytune", {"preset": "chat", "apply": True, "confirm": True})
+        st, _, doc = support.request(s, "POST", "/api/mytune", {"apply": True, "confirm": True})
         self.assertEqual(st, 409)
         self.assertIn("restart command", doc["error"]["message"])
 
@@ -305,7 +321,7 @@ class Route(unittest.TestCase):
         s = self.studio()
         gate = __import__("threading").Event()
         self.fake.chat_speeds = lambda t: (gate.wait(5) and 2000.0, 80.0)
-        support.request(s, "POST", "/api/mytune", {"preset": "chat", "quick": True, "confirm": True})
+        support.request(s, "POST", "/api/mytune", {"quick": True, "confirm": True})
         try:
             st, _, doc = support.request(s, "POST", "/api/run-profile", {})
             self.assertEqual(st, 409)
@@ -317,7 +333,7 @@ class Route(unittest.TestCase):
 
     def test_read_only_refuses(self):
         s = self.studio(read_only=True)
-        st, _, _ = support.request(s, "POST", "/api/mytune", {"preset": "chat", "confirm": True})
+        st, _, _ = support.request(s, "POST", "/api/mytune", {"confirm": True})
         self.assertEqual(st, 403)
 
     def test_the_page_script_is_served(self):

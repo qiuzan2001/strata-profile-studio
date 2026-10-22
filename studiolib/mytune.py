@@ -1,7 +1,7 @@
 """Tune for my workload: the closed loop.
 
   quiet      nobody else uses Strata (the engine log shows no request for a while)
-  analyse    the shapes of the user's requests, from the engine log (or from a preset)
+  analyse    the shapes of the user's requests, from the engine log
   measure    interleaved rounds (studiolib/abtest.py): the current settings twice (the noise of this PC) and each
              candidate once, per round, in a random order. The replay (studiolib/replay.py) is the work.
   apply      the winner goes into the run config, after a copy of the file
@@ -188,23 +188,14 @@ class MyTune:
 
     def _shapes(self, opts: dict):
         """(shapes, the summary of the log or None, a note)."""
-        preset = opts.get("preset")
-        if preset:
-            p = next((x for x in workload.PRESETS if x["id"] == preset), None)
-            if p is None:
-                raise TuneError(400, f"{preset} is not a preset.")
-            read = max(1, int(p["prompt_tokens"] * (1 - p["reused"])))
-            return ([{"read": min(read, replay.MAX_READ), "generated": min(p["generated"], replay.MAX_GENERATED),
-                      "capped": read > replay.MAX_READ or p["generated"] > replay.MAX_GENERATED}], None,
-                    f"The preset {p['name']} (an assumed shape).")
         if not self.engine_log:
-            return [], None, "The Studio does not know Strata's engine log, so it cannot read your requests. Pick a preset."
+            return [], None, "The Studio does not know Strata's engine log, so it cannot read your requests. Start it with --engine-log or --config."
         try:
             reqs = replay.from_log(self.engine_log, int(opts.get("last") or 100), int(opts.get("min_prompt") or 2000))
         except OSError:
             return [], None, "The engine log cannot be read."
         if not reqs:
-            return [], None, "The engine log holds no request of 2,000 prompt tokens or more. Pick a preset."
+            return [], None, "The engine log holds no request of 2,000 prompt tokens or more. Use Strata for a while, then run the tune."
         summary = workload.summarize(reqs)
         return replay.pick_shapes(reqs, int(opts.get("shapes") or 3)), summary, f"{len(reqs)} requests of your log."
 

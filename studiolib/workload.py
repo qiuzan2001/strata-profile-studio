@@ -1,4 +1,4 @@
-"""Workload: what the requests that this PC served look like, and which scenario they are closest to.
+"""Workload: what the requests that this PC served look like.
 
 The engine log has one summary line per request (`strata serve: prompt N tokens = R reused + X read in A ms ...`).
 This module reads the tail of that log and adds up the token counts and the times. It reads no prompt text, writes
@@ -7,8 +7,7 @@ nothing and needs no GPU.
 Two parts:
   * "my traffic": the counts of the last requests (prompt length, the reused share, the reply length, the share of
     time in the prompt read and in the reply, the draft acceptance);
-  * the scenario presets: a typical shape for each of five uses. The shapes are assumed, not measured. The page says
-    so. The time split of a preset is an estimate from the speeds that this PC measured in its own log.
+  * the levers: ideas for this traffic.
 
 The levers are ideas for the user, not measurements. Each one says what it is based on.
 """
@@ -23,22 +22,6 @@ from . import timinglog
 TAIL_BYTES = 8 * 1024 * 1024
 DEFAULT_LAST = 100
 MAX_LAST = 1000
-
-# Typical shapes. Assumed, not measured: `prompt_tokens` and `generated` are the typical size of one request, and
-# `reused` is the share of the prompt that an earlier request already read (the prefix cache).
-PRESETS = (
-    {"id": "chat", "name": "Short chat", "prompt_tokens": 600, "reused": 0.6, "generated": 300,
-     "about": "Short questions in one conversation. Each request adds a few lines."},
-    {"id": "document", "name": "Long document", "prompt_tokens": 30000, "reused": 0.0, "generated": 500,
-     "about": "One long text, read once, with a short answer."},
-    {"id": "browser", "name": "Browser agent", "prompt_tokens": 20000, "reused": 0.4, "generated": 800,
-     "about": "Many steps. Each step has a new page state and a long reply with thinking."},
-    {"id": "coding", "name": "Coding agent", "prompt_tokens": 40000, "reused": 0.8, "generated": 300,
-     "about": "A long context that grows, with edits that copy earlier text."},
-    {"id": "extract", "name": "Structured extraction", "prompt_tokens": 3000, "reused": 0.3, "generated": 200,
-     "about": "A fixed form of output (JSON). Many short, independent requests."},
-)
-
 
 def tail_lines(path: str, tail: int = TAIL_BYTES) -> list[str]:
     with open(path, "rb") as f:
@@ -99,23 +82,6 @@ def summarize(reqs: list[dict]) -> dict | None:
     }
 
 
-def estimate_share(shape: dict, prompt_tok_s: float | None, decode_tok_s: float | None) -> float | None:
-    """The share of one request's time in the prompt read, for a shape, from this PC's own measured speeds."""
-    if not prompt_tok_s or not decode_tok_s:
-        return None
-    pre = shape["prompt_tokens"] * (1.0 - shape["reused"]) / prompt_tok_s
-    dec = shape["generated"] / decode_tok_s
-    return pre / (pre + dec) if pre + dec > 0 else None
-
-
-def distance(mine: dict, preset: dict) -> float:
-    """How far the traffic is from a preset: the sizes on a log scale, the reused share on a plain scale."""
-    p = abs(math.log(max(mine["prompt_tokens"]["median"], 1.0) / preset["prompt_tokens"]))
-    g = abs(math.log((1.0 + mine["generated"]["median"]) / (1.0 + preset["generated"])))
-    r = abs((mine["reused"] or 0.0) - preset["reused"])
-    return p + g + 2.0 * r
-
-
 def levers(mine: dict | None) -> list[dict]:
     """Ideas for this traffic. `basis` says where each one comes from. None of them is a measured gain."""
     if not mine:
@@ -147,8 +113,7 @@ def document(path: str | None, last: int = DEFAULT_LAST, min_prompt: int = 0) ->
     last = max(1, min(int(last), MAX_LAST))
     min_prompt = max(0, int(min_prompt))
     out = {"path": path, "readable": False, "found": 0, "last": last, "min_prompt": min_prompt, "mine": None,
-           "presets": [], "levers": [], "closest": None, "note": None,
-           "preset_note": "The shapes of the presets are assumed. They are not measured."}
+           "levers": [], "note": None}
     if not path:
         out["note"] = "The Studio does not know the engine log. Start it with --engine-log or --config."
         return out
@@ -165,13 +130,5 @@ def document(path: str | None, last: int = DEFAULT_LAST, min_prompt: int = 0) ->
     out["mine"] = mine
     if mine is None:
         out["note"] = "The engine log has no request that matches."
-    for p in PRESETS:
-        item = {**p, "estimated_prompt_share": None, "distance": None}
-        if mine:
-            item["estimated_prompt_share"] = estimate_share(p, mine["prompt_tok_s"], mine["decode_tok_s"])
-            item["distance"] = distance(mine, p)
-        out["presets"].append(item)
-    if mine:
-        out["closest"] = min(out["presets"], key=lambda x: x["distance"])["id"]
     out["levers"] = levers(mine)
     return out

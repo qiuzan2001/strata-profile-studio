@@ -6,10 +6,9 @@
 
 (function () {
   const { el, isNum } = S;
-  const form = { preset: '', quick: true, apply: false };
+  const form = { quick: true, apply: false };
   let plan = null, planError = null, planFor = '', snap = null, timer = null, host = null;
 
-  const PRESET_NAMES = [['', 'My log'], ['chat', 'Chat'], ['document', 'Document'], ['browser', 'Browser agent'], ['coding', 'Coding agent'], ['extract', 'Extraction']];
   const STAGE_LABEL = { quiet: 'Strata is quiet', analyse: 'Read the requests', calibrate: 'Measure the prompt size', measure: 'Compare the settings', apply: 'Write the config', restart: 'Restart Strata', verify: 'Check after the restart' };
   const VERDICT_CLS = { better: 'good', worse: 'bad', 'no change': '', 'not enough rounds': 'warn' };
 
@@ -17,12 +16,11 @@
   const minutes = (s) => (isNum(s) ? (s < 90 ? `${Math.round(s)} s` : `${Math.round(s / 60)} min`) : 'unknown time');
 
   async function loadPlan(A) {
-    const key = `${form.preset}|${form.quick}`;
+    const key = `${form.quick}`;
     if (planFor === key && (plan || planError)) return;
     planFor = key;
     try {
       const q = new URLSearchParams({ quick: form.quick ? '1' : '0' });
-      if (form.preset) q.set('preset', form.preset);
       plan = await S.api(`/api/mytune/plan?${q}`);
       planError = null;
     } catch (e) {
@@ -62,7 +60,6 @@
     });
     if (!ok) return;
     const b = { confirm: true, quick: form.quick, apply: form.apply, apply_without_restart: form.apply && !(plan && plan.restart_command) };
-    if (form.preset) b.preset = form.preset;
     try {
       await S.api('/api/mytune', { body: b });
       S.toast('The tune started.');
@@ -73,7 +70,6 @@
   function planBlock(A) {
     const out = [];
     out.push(el('div', { class: 'view-head' },
-      S.seg(PRESET_NAMES, form.preset, (v) => { form.preset = v; planFor = ''; loadPlan(A); redraw(A); }, 'Which requests'),
       S.seg([[true, 'Quick'], [false, 'Full']], form.quick, (v) => { form.quick = v; planFor = ''; loadPlan(A); redraw(A); }, 'How many settings')));
     if (planError) {
       out.push(el('p', { class: 'note', text: planError }));

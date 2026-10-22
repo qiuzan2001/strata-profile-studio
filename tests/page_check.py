@@ -274,7 +274,7 @@ def main():
                       ("request-report", f"runs/{pair[1]}/r/{req}"), ("compare-pair", f"compare/{pair[0]}/{pair[1]}"),
                       ("compare", "compare"), ("tune", "tune"), ("tune-pc", "tune/pc"), ("settings", "settings")]
             shoot(browser, sc, out, routes, all_sizes)
-            # workload: with requests in the engine log the page shows the counts and names the closest preset
+            # workload: with requests in the engine log the page shows the counts and the tune card
             wl_log = sc.dir / "none.log"
             wl_log.write_text("\n".join(
                 f"strata serve: prompt {p} tokens = {r} reused + {p - r} read in {pm} ms ({(p - r) / pm * 1000:.1f} tok/s), "
@@ -284,10 +284,8 @@ def main():
                 page = browser.new_page(viewport={"width": 1400, "height": 1000})
                 page.goto(f"{sc.base}/#tune")
                 page.wait_for_selector("section#view-tune .tiles", timeout=8000)
-                chip = page.locator("section#view-tune tr", has=page.locator(".chip", has_text="Closest")).first.inner_text()
-                record("workload: the closest preset is the browser agent", "Browser agent" in chip, chip.replace("\n", " ")[:80])
-                record("workload: the page says the preset shapes are assumed",
-                       "assumed" in page.locator("section#view-tune").inner_text())
+                record("workload: the page shows the counts of the requests",
+                       "Requests counted" in page.locator("section#view-tune").inner_text())
                 page.wait_for_selector("section#view-tune .mytune button.btn", timeout=8000)
                 mt = page.locator("section#view-tune .mytune").inner_text()
                 record("workload: the tune card shows the plan, the start button and the Settings link",

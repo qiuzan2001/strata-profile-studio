@@ -15,10 +15,10 @@ One PC measured the numbers below: RTX 5070 Ti 16 GB, Ryzen 7 5800X3D, Swift 1.5
   (the time axis shows them), the second change chart (the full comparison is one click away) and the rate card (the
   history table has a "Best rate" column).
 - **Tune view, pane "My workload":** reads the engine log and shows what the requests of this PC look like (prompt length, reused share,
-  reply length, speeds, the split of the time). It compares them with five scenario presets and names the closest one.
-  The shapes of the presets are assumed, not measured. `GET /api/workload?last=N&min_prompt=N` gives the same data.
+  reply length, speeds, the split of the time). It lists ideas for that traffic.
+  There are no scenario presets: their shapes would be assumed numbers. `GET /api/workload?last=N&min_prompt=N` gives the same data.
   The view only reads.
-- **Tune for my workload:** a card in the My workload pane of the Tune view. It replays the size of your logged requests (or a preset) with
+- **Tune for my workload:** a card in the My workload pane of the Tune view. It replays the size of your logged requests with
   each candidate of `pcie_frac` and `spec_min_p`, in interleaved rounds with an A/A noise floor and a paired bootstrap
   (at least 5 rounds). It checks that the reply text stays the same, waits for a quiet Strata, drops spoiled rounds, and
   can write the winner (after a dated copy), restart Strata (`--restart-cmd`), verify, and roll back. Only settings that

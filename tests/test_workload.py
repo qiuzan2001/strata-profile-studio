@@ -1,4 +1,4 @@
-"""Workload: the counts of the requests in the engine log, the presets and the closest scenario."""
+"""Workload: the counts of the requests in the engine log and the ideas for them."""
 import unittest
 
 import support
@@ -52,29 +52,7 @@ class Counts(unittest.TestCase):
         self.assertIsNone(workload._quantile([], 0.5))
 
 
-class Scenarios(unittest.TestCase):
-    def test_five_presets_with_unique_ids(self):
-        ids = [p["id"] for p in workload.PRESETS]
-        self.assertEqual(len(ids), 5)
-        self.assertEqual(len(set(ids)), 5)
-
-    def test_estimate_uses_the_speeds_of_this_pc(self):
-        shape = {"prompt_tokens": 10000, "reused": 0.5, "generated": 100}
-        # 5,000 new tokens at 1,000 tok/s = 5 s; 100 tokens at 50 tok/s = 2 s
-        self.assertAlmostEqual(workload.estimate_share(shape, 1000.0, 50.0), 5 / 7)
-        self.assertIsNone(workload.estimate_share(shape, None, 50.0))
-        self.assertIsNone(workload.estimate_share(shape, 1000.0, None))
-
-    def test_the_closest_preset_of_agent_traffic_is_the_browser_agent(self):
-        m = workload.summarize(workload.requests_of(AGENT))
-        best = min(workload.PRESETS, key=lambda p: workload.distance(m, p))
-        self.assertEqual(best["id"], "browser")
-
-    def test_the_closest_preset_of_short_traffic_is_chat(self):
-        m = workload.summarize(workload.requests_of([line(500, 300, 250, 300, 3000), line(700, 400, 320, 300, 3500)]))
-        best = min(workload.PRESETS, key=lambda p: workload.distance(m, p))
-        self.assertEqual(best["id"], "chat")
-
+class Levers(unittest.TestCase):
     def test_levers_name_their_basis_and_follow_the_traffic(self):
         m = workload.summarize(workload.requests_of(AGENT))               # the reply takes most of the time
         kinds = {x["kind"] for x in workload.levers(m)}
@@ -100,7 +78,7 @@ class Document(unittest.TestCase):
         self.assertFalse(d["readable"])
         self.assertIn("cannot be read", d["note"])
 
-    def test_empty_log_says_so_and_keeps_the_presets(self):
+    def test_empty_log_says_so(self):
         import tempfile
         with tempfile.NamedTemporaryFile("w", suffix=".log") as f:
             f.write("nothing here\n")
@@ -108,9 +86,6 @@ class Document(unittest.TestCase):
             d = workload.document(f.name)
         self.assertTrue(d["readable"])
         self.assertIsNone(d["mine"])
-        self.assertEqual(len(d["presets"]), 5)
-        self.assertIsNone(d["presets"][0]["estimated_prompt_share"])
-        self.assertIn("assumed", d["preset_note"])
 
     def test_last_and_min_prompt(self):
         import tempfile
@@ -125,7 +100,6 @@ class Document(unittest.TestCase):
         self.assertEqual(allr["mine"]["requests"], 7)
         self.assertEqual(big["mine"]["requests"], 6)
         self.assertEqual(two["mine"]["requests"], 2)
-        self.assertEqual(big["closest"], "browser")
 
 
 class Route(unittest.TestCase):
@@ -150,10 +124,8 @@ class Route(unittest.TestCase):
         s = self.studio(log)
         status, _, doc = request(s, "GET", "/api/workload?last=50&min_prompt=0")
         self.assertEqual(status, 200)
-        self.assertEqual(set(doc), {"path", "readable", "found", "last", "min_prompt", "mine", "presets", "levers",
-                                    "closest", "note", "preset_note"})
+        self.assertEqual(set(doc), {"path", "readable", "found", "last", "min_prompt", "mine", "levers", "note"})
         self.assertEqual(doc["mine"]["requests"], 2)
-        self.assertEqual(doc["closest"], "browser")
         self.assertEqual(doc["last"], 50)
 
     def test_api_workload_rejects_a_bad_number(self):

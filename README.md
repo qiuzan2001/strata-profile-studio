@@ -153,10 +153,6 @@ The Tune view has two panes. The switch at the top moves between them: **My work
   speeds, and how the time splits between the prompt read and the reply.
 - The Studio reads the engine log. It reads no prompt text. Choose how many requests to count. A filter removes the
   short requests of the profile and the tune.
-- Five scenario presets: short chat, long document, browser agent, coding agent and structured extraction. The Studio
-  names the preset that is closest to your requests.
-- **The shapes of the presets are assumed. They are not measured.** The time split of a preset is an estimate from the
-  speeds in your own log.
 - A short list of ideas for your workload. Each idea says what it is based on. None of them is a measured gain.
 - This part of the view only reads. The tune card below it sends requests (see the next section).
 
@@ -166,7 +162,7 @@ A tune that measures your workload, not a fixed prompt. It is a card in the My w
 
 1. **Quiet check.** It waits until the engine log shows no request for 90 s. If another client keeps using Strata, it
    stops and says so.
-2. **Shapes.** It takes three requests from your log (spread by the number of new tokens read) or one preset. It builds
+2. **Shapes.** It sorts the requests of your log by the number of new tokens read, splits them in three groups, and takes the median read and the median reply of each group. It needs requests of 2,000 prompt tokens or more in the log. There is no preset: the Studio does not invent a workload. It builds
    test prompts of the same size from plain filler text and asks the model to copy a passage, so the reply has the
    logged length. **The text is not yours.** The Studio never sends your prompts. The size of the work is real. How well
    drafts work on your own text is not measured.
