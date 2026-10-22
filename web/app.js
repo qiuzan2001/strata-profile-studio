@@ -183,7 +183,6 @@
     runs: ['reports', 'state', 'run', 'tunes'],
     compare: ['reports', 'tunes', 'defaults', 'state'],
     tune: ['flow', 'tunes', 'state', 'reports', 'settings'],
-    workload: ['state'],
     settings: ['settings', 'reports', 'state', 'tunes'],
   };
   const inflight = {};
@@ -287,9 +286,9 @@
     if (A.flow && A.flow.state === 'running') {
       const stage = (A.flow.stages || []).find((x) => x.key === A.flow.stage);
       items.push(['busy', `Tune in progress: ${stage ? stage.label.toLowerCase() : 'start'} · ${S.dur(A.flow.elapsed_s)}.`,
-        A.flow.stage === 'tune' ? 'The calibration unloads the model. Strata answers requests with 503.' : '', A.route.view === 'tune' ? null : [['Show the tune', () => S.go('#tune')]]]);
+        A.flow.stage === 'tune' ? 'The calibration unloads the model. Strata answers requests with 503.' : '', (A.route.view === 'tune' && A.route.parts[1]) ? null : [['Show the tune', () => S.go('#tune/pc')]]]);
     } else if (s.tune && s.tune.state === 'running') {
-      items.push(['busy', `Strata runs a tune (started on the page of Strata) · ${S.dur(s.tune.elapsed_s)}.`, 'Strata answers requests with 503 until the tune ends. The Studio shows the tune read only.', A.route.view === 'tune' ? null : [['Show the tune', () => S.go('#tune')]]]);
+      items.push(['busy', `Strata runs a tune (started on the page of Strata) · ${S.dur(s.tune.elapsed_s)}.`, 'Strata answers requests with 503 until the tune ends. The Studio shows the tune read only.', (A.route.view === 'tune' && A.route.parts[1]) ? null : [['Show the tune', () => S.go('#tune/pc')]]]);
     }
     if (s.run && s.run.state === 'running' && !(A.flow && A.flow.state === 'running'))
       items.push(['busy', `Profile run in progress · ${S.dur(s.run.elapsed_s)}.`, 'Its requests show on the Now page when they end. The report shows on the Runs page.', A.route.view === 'runs' ? null : [['Runs', () => S.go('#runs')]]]);
@@ -317,7 +316,7 @@
   // ---------------------------------------------------------------------------------------- the router
   function renderView(full) {
     const r = A.route;
-    for (const v of ['now', 'runs', 'compare', 'tune', 'workload', 'settings']) S.show(document.getElementById(`view-${v}`), v === r.view);
+    for (const v of ['now', 'runs', 'compare', 'tune', 'settings']) S.show(document.getElementById(`view-${v}`), v === r.view);
     for (const a of document.querySelectorAll('nav.tabs a')) {
       const on = a.dataset.view === r.view;
       S.setClass(a, 'on', on);

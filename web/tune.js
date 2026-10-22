@@ -24,6 +24,7 @@
   };
 
   // the tune to show: #tune/<id>, else the running or last flow of this Studio, else the newest record
+  const routeId = (route) => (route.parts[1] === 'pc' ? null : route.parts[1]);
   function current(A, id) {
     const flow = A.flow;
     if (id) {
@@ -343,11 +344,11 @@
       ok: 'Tune this PC', danger: true,
     });
     if (!ok) return;
-    try { await S.api('/api/tune-flow', { body: {} }); S.toast('The tune started.'); A.poll('flow', true); A.poll('state', true); S.go('#tune'); } catch (e) { S.toast(e.message, 'bad'); }
+    try { await S.api('/api/tune-flow', { body: {} }); S.toast('The tune started.'); A.poll('flow', true); A.poll('state', true); S.go('#tune/pc'); } catch (e) { S.toast(e.message, 'bad'); }
   }
 
   function tick(A) {
-    const cur = current(A, A.route.parts[1]);
+    const cur = current(A, routeId(A.route));
     if (!cur || !live.steps) return;
     const t = cur.t;
     const seq = sequence(linesOf(t));
@@ -359,8 +360,27 @@
 
   function render(A, route, full) {
     const sec = document.getElementById('view-tune');
-    const cur = current(A, route.parts[1]);
-    if (!full && cur && live.steps && sec.firstChild) {             // the same tune and the same measurements: in place
+    // #tune is the workload pane; #tune/pc and #tune/<id> are the calibration of this PC
+    const pane = route.parts[1] === undefined ? 'workload' : 'pc';
+    const paneSeg = () => S.seg([['workload', 'My workload'], ['pc', 'This PC (calibration)']], pane,
+      (v) => S.go(v === 'workload' ? '#tune' : '#tune/pc'), 'What to tune for');
+    if (pane === 'workload') {
+      live.steps = null; builtKey = null;                              // the calibration nodes are gone: tick does nothing
+      const had = sec.dataset.pane === 'workload' && sec.querySelector('.workload-host');
+      if (had && !full) return;                                        // the pane paints itself
+      sec.dataset.pane = 'workload';
+      const host = el('div', { class: 'workload-host' });
+      const running = (A.flow && A.flow.state === 'running') || (A.strata().tune && A.strata().tune.state === 'running');
+      S.fill(sec, el('div', { class: 'view-head' }, el('h2', { text: 'Tune' }), paneSeg(),
+        el('span', { class: 'muted', text: 'replay your own requests with each setting, and keep only a change that beats the noise of this PC' })),
+        running ? el('p', { class: 'note', text: 'A calibration of this PC is running. Open "This PC" to follow it.' }) : null, host);
+      S.workload.mount(A, host);
+      return;
+    }
+    const fresh = sec.dataset.pane !== 'pc';
+    sec.dataset.pane = 'pc';
+    const cur = current(A, routeId(route));
+    if (!full && !fresh && cur && live.steps && sec.firstChild) {             // the same tune and the same measurements: in place
       const t0 = cur.t, sq = sequence(linesOf(t0));
       const k = JSON.stringify([t0.id, t0.state, cur.kind, sq.points.length, (t0.stages || []).map((s) => s.state), (t0.candidates && t0.candidates.outcome)]);
       if (k === builtKey) { tick(A); return; }
@@ -368,9 +388,8 @@
     const my = ++token;
     const why = A.cannotTune();
     const running = A.flow && A.flow.state === 'running';
-    const head = el('div', { class: 'view-head' }, el('h2', { text: 'Tune' }),
-      el('span', { class: 'muted', text: 'profile before, calibration, model load, profile after, comparison · to tune for your own requests, use ' }),
-      el('a', { href: '#workload', text: 'Workload' }), el('span', { class: 'grow' }),
+    const head = el('div', { class: 'view-head' }, el('h2', { text: 'Tune' }), paneSeg(),
+      el('span', { class: 'muted', text: 'profile before, calibration, model load, profile after, comparison' }), el('span', { class: 'grow' }),
       S.button(running ? 'Tune in progress' : 'Tune this PC', () => confirmTune(A), 'primary', { disabled: !!why, title: why || 'The calibration unloads the model.' }));
     const parts = [head];
     if (why && !running && !(A.strata().tune && A.strata().tune.state === 'running')) parts.push(el('p', { class: 'note', text: `Tune not possible now: ${why}` }));

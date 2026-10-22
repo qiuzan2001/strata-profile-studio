@@ -282,11 +282,12 @@ S.store = {
 S.studioKey = () => { try { return sessionStorage.getItem('studio.key') || ''; } catch (e) { return ''; } };
 
 // ------------------------------------------------------------------------------------------- the router
-// #now  #now/r/<seq>  #runs  #runs/<id>  #runs/<id>/r/<req>  #compare/<a>/<b>  #tune  #tune/<id>  #settings[/<id>]
+// #now  #now/r/<seq>  #runs  #runs/<id>  #runs/<id>/r/<req>  #compare/<a>/<b>  #tune (workload)  #tune/pc  #tune/<id>  #settings[/<id>]
 S.route = function route() {
   const h = decodeURIComponent((location.hash || '#now').slice(1));
   const parts = h.split('/').filter(Boolean);
-  const view = ['now', 'runs', 'compare', 'tune', 'workload', 'settings'].includes(parts[0]) ? parts[0] : 'now';
+  if (parts[0] === 'workload') parts[0] = 'tune';            // the Workload view is the first pane of Tune
+  const view = ['now', 'runs', 'compare', 'tune', 'settings'].includes(parts[0]) ? parts[0] : 'now';
   const r = { view, parts, panel: null };
   const ri = parts.indexOf('r');
   if (ri >= 0 && parts[ri + 1]) r.panel = { where: view === 'runs' ? 'report' : 'live', report: view === 'runs' ? parts[1] : null, id: parts[ri + 1] };

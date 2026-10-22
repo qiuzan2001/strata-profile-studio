@@ -138,11 +138,16 @@ The screenshots show the real data of one PC (RTX 5070 Ti 16 GB, Ryzen 7 5800X3D
 
 ![Tune](docs/screenshots/tune.png)
 
+The Tune view has two panes. The switch at the top moves between them: **My workload** (`#tune`) and **This PC**
+(`#tune/pc`). The old `#workload` address opens My workload. Compare stays a view of its own, for any two or more runs.
+
+**This PC** (calibration):
+
 - **Tune this PC**: a profile, Strata's calibration, a second profile, and the comparison (see below).
 - What the calibration measured, round by round, and which value it kept.
 - Whether the tune helped the requests that you send, not only the calibration's own test.
 
-### Workload
+### Tune: My workload
 
 - What the requests of this PC look like: the prompt length, the reused share of the prompt, the reply length, the
   speeds, and how the time splits between the prompt read and the reply.
@@ -157,7 +162,7 @@ The screenshots show the real data of one PC (RTX 5070 Ti 16 GB, Ryzen 7 5800X3D
 
 ### Tune for my workload
 
-A tune that measures your workload, not a fixed prompt. It is a card in the Workload view.
+A tune that measures your workload, not a fixed prompt. It is a card in the My workload pane of the Tune view.
 
 1. **Quiet check.** It waits until the engine log shows no request for 90 s. If another client keeps using Strata, it
    stops and says so.

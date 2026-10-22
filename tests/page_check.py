@@ -189,12 +189,12 @@ def demo_check(browser, out):
         errs = []
         page.on("pageerror", lambda e: errs.append(str(e)))
         page.on("console", lambda m: errs.append(m.text) if m.type == "error" else None)
-        expect = {"now": "Limiting component", "runs": "run 7", "compare": "baseline", "tune": "Tune history",
+        expect = {"now": "Limiting component", "runs": "run 7", "compare": "baseline", "tune": "Your workload", "tune/pc": "Tune history",
                   "settings": "--pcie-frac"}
         for view, words in expect.items():
             page.goto(f"{base}/#{view}")
             time.sleep(3)
-            page.screenshot(path=str(out / f"demo-{view}-light.png"), full_page=True)
+            page.screenshot(path=str(out / f"demo-{view.replace('/', '-')}-light.png"), full_page=True)
             text = page.evaluate("document.querySelector('main').innerText")
             record(f"demo {view}: has data", words.lower() in text.lower(), words)
         page.goto(f"{base}/#now")
@@ -272,7 +272,7 @@ def main():
             req = "agent-1" if any(q["id"] == "agent-1" for q in get(f"{sc.base}/api/reports/{pair[1]}")["requests"]) else "chat-1"
             routes = [("now", "now"), ("request-live", f"now/r/{seq}"), ("runs", "runs"), ("run", f"runs/{pair[1]}"),
                       ("request-report", f"runs/{pair[1]}/r/{req}"), ("compare-pair", f"compare/{pair[0]}/{pair[1]}"),
-                      ("compare", "compare"), ("tune", "tune"), ("workload", "workload"), ("settings", "settings")]
+                      ("compare", "compare"), ("tune", "tune"), ("tune-pc", "tune/pc"), ("settings", "settings")]
             shoot(browser, sc, out, routes, all_sizes)
             # workload: with requests in the engine log the page shows the counts and names the closest preset
             wl_log = sc.dir / "none.log"
@@ -282,14 +282,14 @@ def main():
                 for p, r, g, pm, dm in ((20000, 8000, 800, 4000, 8000), (24000, 10000, 1000, 5000, 11000))) + "\n")
             try:
                 page = browser.new_page(viewport={"width": 1400, "height": 1000})
-                page.goto(f"{sc.base}/#workload")
-                page.wait_for_selector("section#view-workload .tiles", timeout=8000)
-                chip = page.locator("section#view-workload tr", has=page.locator(".chip", has_text="Closest")).first.inner_text()
+                page.goto(f"{sc.base}/#tune")
+                page.wait_for_selector("section#view-tune .tiles", timeout=8000)
+                chip = page.locator("section#view-tune tr", has=page.locator(".chip", has_text="Closest")).first.inner_text()
                 record("workload: the closest preset is the browser agent", "Browser agent" in chip, chip.replace("\n", " ")[:80])
                 record("workload: the page says the preset shapes are assumed",
-                       "assumed" in page.locator("section#view-workload").inner_text())
-                page.wait_for_selector("section#view-workload .mytune button.btn", timeout=8000)
-                mt = page.locator("section#view-workload .mytune").inner_text()
+                       "assumed" in page.locator("section#view-tune").inner_text())
+                page.wait_for_selector("section#view-tune .mytune button.btn", timeout=8000)
+                mt = page.locator("section#view-tune .mytune").inner_text()
                 record("workload: the tune card shows the plan, the start button and the Settings link",
                        "Start the tune" in mt and "Settings" in mt and "Quick" in mt, mt.replace("\n", " ")[:80])
                 page.screenshot(path=str(out / "workload-light.png"), full_page=True)
@@ -415,7 +415,7 @@ def main():
                 running = get(f"{sc.base}/api/state")["strata"]["run"]["state"] == "running"
                 record("runs: Run a profile starts a run from the page", running)
                 time.sleep(8)
-                page.goto(f"{sc.base}/#tune")
+                page.goto(f"{sc.base}/#tune/pc")
                 time.sleep(2.5)
                 page.locator("button.primary", has_text="Tune this PC").click()
                 page.locator("#dlg-check").check()
@@ -458,7 +458,7 @@ def main():
         for name, kw in states:
             sc = Scenario(a, name, **kw)
             try:
-                routes = [("now", "now"), ("runs", "runs"), ("compare", "compare"), ("tune", "tune")]
+                routes = [("now", "now"), ("runs", "runs"), ("compare", "compare"), ("tune", "tune/pc")]
                 if name in ("unreachable", "key"):
                     routes.append(("settings", "settings"))
                 shoot(browser, sc, out, routes, ["light", "phone"] if not a.quick else ["light"], settle=3.5)

@@ -89,7 +89,7 @@ def record(frames: Path):
             shoot(1.5)
             scroll_to("Change against the reference", 1.5)
             shoot(2)
-            page.goto(f"{base}/#tune")
+            page.goto(f"{base}/#tune/pc")
             time.sleep(2.5)
             shoot(1)
             scroll_to("Tune result per workload", 1.5)

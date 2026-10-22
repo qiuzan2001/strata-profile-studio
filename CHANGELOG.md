@@ -4,6 +4,9 @@ One PC measured the numbers below: RTX 5070 Ti 16 GB, Ryzen 7 5800X3D, Swift 1.5
 
 ## Unreleased
 
+- **Workload and Tune are one view.** The Workload tab is gone. Tune has two panes, "My workload" (`#tune`) and "This PC"
+  (calibration, `#tune/pc`). `#workload` still opens the first pane. Compare stays a view of its own. The views are five:
+  Now, Runs, Compare, Tune, Settings.
 - **Stock banner removed:** the top banner "This Strata build has no profile routes (Strata 0.1.44.1 as released) ..." was
   out of date. Strata PRs #2660 and #2661 were closed unmerged, and every release (0.2.2 too) has no profile routes. Stock
   mode is now the normal case. The header still shows "stock Strata". A banner appears only for a version mismatch.
@@ -11,11 +14,11 @@ One PC measured the numbers below: RTX 5070 Ti 16 GB, Ryzen 7 5800X3D, Swift 1.5
   the settings table and the window composition (they stay for three or more runs). Tune drops the stage-duration bars
   (the time axis shows them), the second change chart (the full comparison is one click away) and the rate card (the
   history table has a "Best rate" column).
-- **Workload view:** reads the engine log and shows what the requests of this PC look like (prompt length, reused share,
+- **Tune view, pane "My workload":** reads the engine log and shows what the requests of this PC look like (prompt length, reused share,
   reply length, speeds, the split of the time). It compares them with five scenario presets and names the closest one.
   The shapes of the presets are assumed, not measured. `GET /api/workload?last=N&min_prompt=N` gives the same data.
   The view only reads.
-- **Tune for my workload:** a card in the Workload view. It replays the size of your logged requests (or a preset) with
+- **Tune for my workload:** a card in the My workload pane of the Tune view. It replays the size of your logged requests (or a preset) with
   each candidate of `pcie_frac` and `spec_min_p`, in interleaved rounds with an A/A noise floor and a paired bootstrap
   (at least 5 rounds). It checks that the reply text stays the same, waits for a quiet Strata, drops spoiled rounds, and
   can write the winner (after a dated copy), restart Strata (`--restart-cmd`), verify, and roll back. Only settings that

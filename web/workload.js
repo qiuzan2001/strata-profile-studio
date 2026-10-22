@@ -1,13 +1,12 @@
-/* Strata Profile Studio: Workload.  What the requests of this PC look like (read from the engine log), the five scenario
-   presets, and the preset that is closest.  The presets are assumed shapes. They are not measurements.  This view only
-   reads: it writes no file and starts no run. */
+/* Strata Profile Studio: the workload pane of the Tune view.  What the requests of this PC look like (read from the
+   engine log), the five scenario presets, and the preset that is closest.  The presets are assumed shapes. They are not
+   measurements.  The tune card (mytune.js) sits in the same pane.  The counts only read: they write no file. */
 'use strict';
 
 (function () {
   const { el, isNum } = S;
-  S.viewDefs = S.viewDefs || {};
   const opts = { last: 100, minPrompt: 2000 };
-  let doc = null, error = null, loading = false;
+  let doc = null, error = null, loading = false, host = null;
 
   async function load(A) {
     if (loading) return;
@@ -20,7 +19,7 @@
       error = e.message;
     } finally {
       loading = false;
-      if (A.route.view === 'workload') render(A, A.route, true);
+      paint(A);
     }
   }
 
@@ -35,7 +34,7 @@
   }
 
   function controls(A) {
-    return el('div', { class: 'view-head' }, el('h2', { text: 'Workload' }),
+    return el('div', { class: 'view-head' }, el('h3', { text: 'Your workload' }),
       S.seg([[50, 'Last 50'], [100, 'Last 100'], [300, 'Last 300']], opts.last, (v) => { opts.last = v; load(A); }, 'Number of requests'),
       S.seg([[0, 'All requests'], [2000, 'Prompts of 2,000 tokens or more']], opts.minPrompt, (v) => { opts.minPrompt = v; load(A); }, 'Which requests'),
       S.button('Refresh', () => load(A), 'small'));
@@ -99,23 +98,28 @@
     return S.card({ q: 'Ideas for this workload', sub: 'These are ideas. None of them is a measured gain on this PC.' }, S.table(cols, rows));
   }
 
-  function render(A, r, full) {
-    const sec = document.getElementById('view-workload');
-    if (doc === null && error === null && !loading) { load(A); }
+  function paint(A) {
+    if (!host || !host.isConnected) return;
     const body = [controls(A)];
     if (error) {
       body.push(el('p', { class: 'note', text: error }));
     } else if (!doc) {
       body.push(el('p', { class: 'note', text: 'Reading the engine log…' }));
     } else if (!doc.mine) {
-      body.push(el('p', { class: 'note', text: doc.note || 'No request is available.' }));
-      body.push(presetCard(doc), S.mytune.card(A));
+      body.push(el('p', { class: 'note', text: doc.note || 'No request is available.' }), S.mytune.card(A), presetCard(doc));
     } else {
-      body.push(tiles(doc.mine), timeCard(doc.mine), leverCard(doc), presetCard(doc), S.mytune.card(A));
+      body.push(tiles(doc.mine), timeCard(doc.mine), S.mytune.card(A), leverCard(doc), presetCard(doc));
       body.push(el('p', { class: 'note', text: `The log holds ${S.int(doc.found)} requests in its last 8 MiB. The log may include requests from the profile and the tune.` }));
     }
-    S.fill(sec, ...body);
+    S.fill(host, ...body);
   }
 
-  S.viewDefs.workload = { render };
+  // the Tune view calls this with the node to fill
+  S.workload = {
+    mount(A, node) {
+      host = node;
+      if (doc === null && error === null && !loading) load(A);
+      else paint(A);
+    },
+  };
 })();
