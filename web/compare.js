@@ -237,17 +237,6 @@
       lines.push(el('li', { class: sign.p <= 0.05 ? (sign.slower > sign.faster ? 'v-worse' : 'v-better') : 'v-same' }, el('b', { text: 'sign test' }),
         ` ${sign.slower} of ${sign.turns} agent turns are slower and ${sign.faster} are faster. A coin gives a split this uneven ${S.pct(sign.p, 1)} of the time (two-sided).${sign.p <= 0.05 ? ' The change is real, although each turn stays inside its own noise.' : ''}`));
     }
-    const tile = (w) => {
-      const r = row('decode', w, 'decode tok/s');
-      const v = c.verdicts.find((x) => x.group === 'decode' && x.key === w);
-      const st = v ? v.state : 'missing';
-      return S.tile(`Decode speed, ${w}`, r && isNum(r.pct) ? S.signed(r.pct, 1) : '–', r && isNum(r.pct) ? '%' : '',
-        r ? `${S.num(r.a, 1)} to ${S.num(r.b, 1)} tok/s · ${st === 'same' ? `inside the ±${(Math.floor(r.floor * 1000 + 1e-6) / 10).toFixed(1)} % noise floor` : st === 'better' ? 'faster, outside the noise' : st === 'worse' ? 'slower, outside the noise' : 'not in both'}` : 'not in both runs', `state-${st}`);
-    };
-    const tiles = el('div', { class: 'tiles span3' }, tile('chat'), tile('long context'), tile('agent turns'),
-      S.tile('Agent turns in one direction', sign.turns ? `${Math.max(sign.faster, sign.slower)} of ${sign.turns}` : '–', '',
-        sign.turns ? `${sign.slower > sign.faster ? 'slower' : 'faster'} · chance: 1 in ${sign.p ? Math.round(1 / sign.p) : '–'} (sign test)` : 'no agent turns in both', sign.turns && sign.p !== null && sign.p <= 0.05 ? (sign.slower > sign.faster ? 'state-worse' : 'state-better') : ''),
-      S.tile('Settings changed', String(changed.length), '', changed.slice(0, 3).map((s) => s.flag.replace(/^--/, '')).join(', ')));
     const answer = S.card({ q: `Result: ${nb} against ${na}`, sub: 'a change counts only when it is larger than the noise floor of this PC', cls: 'span3' },
       c.warnings.length ? el('p', { class: 'warnline', text: `Different conditions: ${c.warnings.join(', ')}.` }) : null, el('ul', { class: 'verdicts' }, lines));
     const frows = [];
@@ -278,7 +267,7 @@
     const more = el('div', { class: 'span3 more-row' }, S.button(ui.table ? 'Hide all numbers' : `All numbers (${c.rows.length} rows)`, () => { ui.table = !ui.table; render(A); }, 'more'));
     const table = ui.table ? S.card({ q: 'All numbers', sub: 'A, B, the change and the noise floor of each metric', cls: 'span3', tools: el('div', { class: 'card-tools' }, S.button('Download CSV', () => S.csv(`compare-${S.runNo(a, A.reports)}-${S.runNo(b, A.reports)}.csv`, cols, c.rows), 'small')) },
       S.table(cols, c.rows.map((r) => Object.assign({ _cls: `st-${r.state}` }, r)))) : null;
-    return [el('h3', { class: 'section-title span3', text: `Two-run comparison: A = ${na}, B = ${nb}` }), tiles, answer, forest, whyCard, setCard, noiseCard, more, table];
+    return [el('h3', { class: 'section-title span3', text: `Two-run comparison: A = ${na}, B = ${nb}` }), answer, forest, whyCard, setCard, noiseCard, more, table];
   }
 
   async function render(A) {

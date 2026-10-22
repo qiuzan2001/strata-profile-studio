@@ -349,7 +349,9 @@ def main():
             setup = [n for n in names if n in ("--spec", "--prefill", "--expert-cache", "--max-context", "--kv-resident", "--kv")]
             record("settings: the calibrated reset keeps each flag setup wrote", not setup, f"staged {names}")
             page.screenshot(path=str(out / "main-settings-reset-light.png"), full_page=True)
-            page.locator("button.btn", has_text="Discard the edits").click()
+            discard = page.locator("button.btn", has_text="Discard the edits")
+            if discard.is_enabled():                       # the reset stages nothing when no calibrated value is set
+                discard.click()
             # settings: write the config copy with the settings of the tune's before run (or the oldest run)
             before_cfg = sc.config.read_text()
             target = next((r["id"] for r in reports if any(x["changed"] for x in get(
