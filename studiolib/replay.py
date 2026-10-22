@@ -43,7 +43,7 @@ def filler(words: int, salt: str) -> str:
 
 
 def pick_shapes(reqs: list[dict], k: int = 3, max_read: int = MAX_READ, max_generated: int = MAX_GENERATED) -> list[dict]:
-    """k shapes from the logged requests: spread over the requests by the number of tokens read. A shape is
+    """k shapes from the logged requests: the middle of each k-th of them, ordered by the number of tokens read. A shape is
     {"read": tokens, "generated": tokens}. Both are capped, and `capped` says so."""
     rows = []
     for r in reqs:
@@ -56,7 +56,7 @@ def pick_shapes(reqs: list[dict], k: int = 3, max_read: int = MAX_READ, max_gene
         return []
     rows.sort()
     k = max(1, min(k, len(rows)))
-    picks = [rows[round(i * (len(rows) - 1) / (k - 1))] if k > 1 else rows[len(rows) // 2] for i in range(k)]
+    picks = [rows[min(len(rows) - 1, int((i + 0.5) * len(rows) / k))] for i in range(k)]      # the middle of each k-th of the requests, not the extremes
     out = []
     for read, gen in picks:
         out.append({"read": min(read, max_read), "generated": min(gen, max_generated),
