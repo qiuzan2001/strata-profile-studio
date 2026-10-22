@@ -14,13 +14,14 @@ One PC measured the numbers below: RTX 5070 Ti 16 GB, Ryzen 7 5800X3D, Swift 1.5
   the settings table and the window composition (they stay for three or more runs). Tune drops the stage-duration bars
   (the time axis shows them), the second change chart (the full comparison is one click away) and the rate card (the
   history table has a "Best rate" column).
-- **Tune with the standard test** (Tune view, pane "Standard test"): replays 3 fixed requests (2,000, 8,000 and 16,000
-  new tokens read, 256 tokens of reply: the same on every PC and in every run) with each candidate of `pcie_frac` and
-  `spec_min_p`, in interleaved rounds with an A/A noise floor and a paired bootstrap (at least 5 rounds). It checks that
-  the reply text stays the same, waits for a quiet Strata, drops spoiled rounds, and can write the winner (after a dated
-  copy), restart Strata (`--restart-cmd`), verify, and roll back. Only settings that do not change the answers are
-  tuned. There are no scenario presets and the shapes are not taken from the log: both would be guesses about the
-  workload.
+- **Tune with the standard test** (Tune view, pane "Standard test"): replays one conversation of 6 turns like a coding
+  agent's session (a 24,000-token first prompt, then turns that add 800 to 3,000 new tokens on the reused conversation,
+  replies of 128 to 512 tokens, some copied text and some free text; the same on every PC and in every run) with each
+  candidate of `pcie_frac` and `spec_min_p`, in interleaved rounds with an A/A noise floor and a paired bootstrap (at
+  least 5 rounds). The score is the generation time per generated token. It checks that the reply text stays the same and that Strata reuses
+  the conversation, waits for a quiet Strata, drops spoiled rounds, and can write the winner (after a dated copy),
+  restart Strata (`--restart-cmd`), verify, and roll back. Only settings that do not change the answers are tuned. There
+  are no scenario presets and the turns are not taken from the log: both would be guesses about the workload.
 - **Your requests** (same pane, read only): the counts of the requests in the engine log (prompt length, reused share,
   reply length, speeds, the split of the time) and ideas for them. `GET /api/workload?last=N&min_prompt=N` gives them.
 - **Settings:** new rows for `--suffix-draft`, `--lookup-chain`, `reasoning_budget_tokens` and `STRATA_ROUTE_TAIL_SKIP`,

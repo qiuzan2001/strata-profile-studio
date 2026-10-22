@@ -1,12 +1,15 @@
-"""The standard test: the same requests on every PC and in every run, one arm (one set of per-request settings) at a time.
+"""The standard test: one conversation of the same 6 turns on every PC and in every run, replayed once per arm (one set
+of per-request settings).
 
-A request is a shape: the tokens read and the tokens generated. The test builds a prompt of that many tokens from plain
-filler text and asks the model to copy a passage, so the reply has the planned length. The text is not the user's text.
+It is built like a coding agent's session: a long first prompt, then turns that add a few thousand new tokens on top of
+the conversation that the engine already holds, with replies of different length. Some replies copy text (like a tool
+call or a diff) and some are free text (like an explanation). The prompt text is plain filler, not the user's text.
 The Studio never reads or sends the content of the user's prompts. How well the drafts of the engine (suffix draft,
 MTP) work on the user's own text is therefore not measured here.
 
-Every prompt starts with a salt, so the engine finds no reused prefix: the replay reads every token new.
-The request is greedy (temperature 0) and sets `strata_checkpoint: false`, so the replay leaves no checkpoint.
+Every conversation starts with a salt, so the engine finds no reused prefix from another pass: the first turn reads
+every token new. The later turns reuse the turn before, as a real session does. The history holds fixed text for the
+replies, so every arm gets the same prompts whatever it answers. The request is greedy (temperature 0).
 """
 from __future__ import annotations
 
@@ -37,23 +40,33 @@ def filler(words: int, salt: str) -> str:
     return " ".join(out)
 
 
-# The standard test: the same three requests on every PC and in every run, so that two tunes can be compared. It is a
-# benchmark, not a claim about the user's traffic: a short, a medium and a long context, each with a reply of 256 tokens.
-STANDARD_SHAPES = (
-    {"read": 2000, "generated": 256, "capped": False},
-    {"read": 8000, "generated": 256, "capped": False},
-    {"read": 16000, "generated": 256, "capped": False},
+# The standard test: 6 turns. `read` is the new tokens that the turn adds (the first turn: the whole prompt), `generated`
+# the planned reply, `kind` says whether the reply copies text or is free. It is a benchmark, not a claim about the
+# user's traffic. The numbers are fixed, so that two tunes can be compared.
+STANDARD_TURNS = (
+    {"read": 24000, "generated": 128, "kind": "copy"},
+    {"read": 1500, "generated": 384, "kind": "free"},
+    {"read": 3000, "generated": 192, "kind": "copy"},
+    {"read": 1000, "generated": 512, "kind": "copy"},
+    {"read": 2000, "generated": 384, "kind": "free"},
+    {"read": 800, "generated": 128, "kind": "copy"},
 )
-STANDARD_NOTE = ("The standard test: 3 fixed requests (2,000, 8,000 and 16,000 new tokens read, 256 tokens of reply). "
-                 "It is the same on every PC and in every run, so two tunes can be compared.")
+STANDARD_NOTE = ("The standard test: one conversation of 6 turns, like a coding agent. The first turn reads 24,000 tokens. "
+                 "Each later turn adds 800 to 3,000 new tokens on top of the conversation that Strata already holds, and "
+                 "the replies have 128 to 512 tokens (1,728 in all). Some replies copy text, like a diff, and some are "
+                 "free text, like an explanation. It is the same on every PC and in every run, so two tunes can be compared.")
+FREE_TASK = ("Now write a long, detailed explanation of how a garbage collector works in a programming language, with "
+             "examples. Do not stop early.")
+REUSE_MIN = 0.5                                         # a later turn must reuse at least this share of its prompt
+CLEAN_FIRST = 64                                        # the first turn may find at most this many tokens cached
 
 
-def standard_shapes() -> list[dict]:
-    return [dict(s) for s in STANDARD_SHAPES]
+def standard_turns() -> list[dict]:
+    return [dict(t) for t in STANDARD_TURNS]
 
 
 def shapes_seconds(shapes: list[dict], prompt_tok_s: float | None, decode_tok_s: float | None) -> float | None:
-    """The time one pass over the shapes takes at the speeds of the log. None when a speed is unknown."""
+    """The time one pass over the turns takes at the speeds of the log. None when a speed is unknown."""
     if not prompt_tok_s or not decode_tok_s:
         return None
     return sum(s["read"] / prompt_tok_s + s["generated"] / decode_tok_s for s in shapes)
@@ -76,11 +89,15 @@ class Client:
         except (OSError, ValueError):
             return None
 
-    def chat(self, prompt: str, max_tokens: int, tune: dict | None = None, cancel=None) -> dict:
+    def chat(self, prompt: str, max_tokens: int, tune: dict | None = None, cancel=None, messages: list | None = None,
+             checkpoint: bool = False) -> dict:
+        """One request. A `prompt` is a one-shot call (no checkpoint is kept). `messages` is a conversation: with
+        `checkpoint` the engine keeps this turn, so that the next turn reuses it."""
         body = {"model": "strata", "stream": True, "max_tokens": max_tokens, "temperature": 0,
-                "strata_checkpoint": False, "reasoning_effort": "none",
-                "chat_template_kwargs": {"enable_thinking": False},
-                "messages": [{"role": "user", "content": prompt}]}
+                "reasoning_effort": "none", "chat_template_kwargs": {"enable_thinking": False},
+                "messages": messages if messages is not None else [{"role": "user", "content": prompt}]}
+        if not checkpoint:
+            body["strata_checkpoint"] = False
         if tune:
             body["strata_tune"] = dict(tune)
         headers = {"Content-Type": "application/json"}
@@ -148,33 +165,48 @@ class Sizer:
         return max(1, int(max(0, tokens) / self.per_word))
 
 
-def prompt_for(shape: dict, sizer: Sizer, salt: str) -> tuple[str, int]:
-    """(the prompt text, max_tokens). The passage to copy is `generated` tokens long; the filler makes up the rest."""
-    passage_words = sizer.words(shape["generated"])
-    passage = filler(passage_words, "passage")
-    head_tokens = int(len(PASSAGE_HEAD.split()) * 1.4) + 8
-    ctx_words = sizer.words(shape["read"] - sizer.base_tokens - passage_words * sizer.per_word - head_tokens - 6)
-    ctx = f"Reference {salt}: " + filler(ctx_words, salt)       # the salt comes first, so no prefix is shared
-    return f"{ctx}\n\n{PASSAGE_HEAD}{passage}", shape["generated"]
+def user_turn(turn: dict, i: int, sizer: Sizer, salt: str, prev_reply_tokens: int) -> str:
+    """The user message of turn i: filler that makes up the new tokens, then the task. The first turn starts with the
+    salt, so no prefix is shared with another pass."""
+    if turn["kind"] == "copy":
+        passage_words = sizer.words(turn["generated"])
+        task = PASSAGE_HEAD + filler(passage_words, f"copy{i}")
+        task_tokens = passage_words * sizer.per_word + int(len(PASSAGE_HEAD.split()) * 1.4) + 8
+    else:
+        task = FREE_TASK
+        task_tokens = len(FREE_TASK.split()) * 1.4 + 8
+    own = turn["read"] - task_tokens - prev_reply_tokens - (sizer.base_tokens if i == 0 else 0) - 6
+    head = f"Reference {salt}: " if i == 0 else ""
+    return f"{head}{filler(sizer.words(own), f'{salt}-{i}')}\n\n{task}"
 
 
-def one_pass(client: Client, shapes: list[dict], sizer: Sizer, tune: dict | None, salt: str, cancel=None) -> dict:
-    """Every shape once. The score of the pass is `score_s`: the seconds of the engine's own clock (prompt and reply),
-    or the wall seconds when the engine reports none. `cached` counts the prompt tokens that the engine reused
-    after all: a pass with cached tokens is not a clean read."""
+def one_pass(client: Client, turns: list[dict], sizer: Sizer, tune: dict | None, salt: str, cancel=None) -> dict:
+    """The conversation once. The score of the pass is `score_ms`: the milliseconds that the engine spent per generated
+    token (the settings under test act on the reply, not on the prompt read; per token, because the reply length of
+    two passes can differ a little even with the same settings), or the wall milliseconds per token when the engine
+    reports no time.
+    `cached` is what the first turn found cached (it should be nothing); `reuse_min` is the smallest share of a later
+    turn's prompt that the engine reused (a real session reuses nearly all of it)."""
     wall = prompt_ms = decode_ms = 0.0
     read = gen = cached = drafts = accepted = 0
-    errors, h = [], hashlib.sha256()
-    for i, shape in enumerate(shapes):
-        prompt, max_tokens = prompt_for(shape, sizer, f"{salt}-{i}")
-        r = client.chat(prompt, max_tokens, tune, cancel)
+    reuse, errors, h = [], [], hashlib.sha256()
+    history: list[dict] = []
+    prev_tokens = 0
+    for i, turn in enumerate(turns):
+        user = {"role": "user", "content": user_turn(turn, i, sizer, salt, prev_tokens)}
+        last = i == len(turns) - 1
+        r = client.chat("", turn["generated"], tune, cancel, messages=history + [user], checkpoint=not last)
         if r["error"]:
             errors.append(r["error"])
             break
         wall += r["wall_s"]
         t, u = r["timings"], r["usage"]
-        read += int(t.get("prompt_n") or u.get("prompt_tokens") or 0)
-        cached += int(t.get("cache_n") or 0)
+        n_read, n_cache = int(t.get("prompt_n") or 0), int(t.get("cache_n") or 0)
+        read += n_read or int(u.get("prompt_tokens") or 0)
+        if i == 0:
+            cached = n_cache
+        elif n_read + n_cache:
+            reuse.append(n_cache / (n_read + n_cache))
         gen += int(u.get("completion_tokens") or t.get("predicted_n") or 0)
         prompt_ms += float(t.get("prompt_ms") or 0.0)
         decode_ms += float(t.get("predicted_ms") or 0.0)
@@ -182,9 +214,13 @@ def one_pass(client: Client, shapes: list[dict], sizer: Sizer, tune: dict | None
         accepted += int(t.get("draft_n_accepted") or 0)
         h.update(r["text"].encode())
         h.update(b"\x00")
-    engine_s = (prompt_ms + decode_ms) / 1000
-    return {"score_s": engine_s if engine_s > 0 else wall, "wall_s": wall, "read": read, "generated": gen,
-            "cached": cached, "prompt_tok_s": (read / prompt_ms * 1000) if prompt_ms else None,
+        fixed = filler(sizer.words(turn["generated"]), f"asst{i}")              # fixed text: the same history in every arm
+        history += [user, {"role": "assistant", "content": fixed}]
+        prev_tokens = int(sizer.words(turn["generated"]) * sizer.per_word)
+    per_token = (decode_ms if decode_ms > 0 else wall * 1000) / max(gen, 1)
+    return {"score_ms": per_token, "wall_s": wall, "prompt_s": prompt_ms / 1000, "read": read,
+            "generated": gen, "cached": cached, "reuse_min": min(reuse) if reuse else None,
+            "prompt_tok_s": (read / prompt_ms * 1000) if prompt_ms else None,
             "decode_tok_s": (gen / decode_ms * 1000) if decode_ms else None,
             "drafts_accepted": (accepted / drafts) if drafts else None,
             "hash": h.hexdigest(), "error": errors[0] if errors else None}

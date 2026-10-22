@@ -1,5 +1,5 @@
 /* Strata Profile Studio: the tune with the standard test.  One card in the Standard test pane of the Tune view.
-   The Studio replays 3 fixed requests with each candidate setting, in turns, and keeps a change only
+   The Studio replays one 6-turn conversation with each candidate setting, in turns, and keeps a change only
    when the change is larger than the noise of this PC.  Only settings that do not change the answers are tried.
    The settings that change the answers are in Settings. */
 'use strict';
@@ -49,6 +49,7 @@
       title: 'Start the tune with the standard test?',
       points: [
         `It sends test requests to Strata for ${mins}. Strata answers other clients slowly or not at all in that time.`,
+        'The test is a conversation of 6 turns. It fills the conversation cache of Strata with its own conversations, so the next request of your own session may have to read its prompt again.',
         'Nobody else should use Strata while it runs. A round in which another request arrives is dropped.',
         'It tries only settings that do not change the answers. It compares the text of every try with the text of the current settings.',
         writes
@@ -80,9 +81,7 @@
       return out;
     }
     const cur = plan.current || {};
-    const shapes = plan.shapes.map((s) => `${S.int(s.read)} tokens read, ${S.int(s.generated)} generated${s.capped ? ' (capped)' : ''}`).join('; ');
     out.push(el('p', { class: 'note', text: plan.note }));
-    if (shapes) out.push(el('p', { class: 'note', text: `The test requests: ${shapes}.` }));
     out.push(el('p', { class: 'note', text: `Now: pcie-frac ${cur.pcie_frac ?? 'engine default'}, spec-min-p ${cur.spec_min_p ?? 'engine default'}. `
       + `It tries ${plan.arms.length} settings (${plan.arms.join(', ')}), ${plan.rounds} rounds each, and the current settings twice. `
       + `This takes ${isNum(plan.seconds) ? `about ${minutes(plan.seconds)}` : 'a time that the Studio cannot estimate'}.` }));
@@ -111,14 +110,14 @@
     const rows = Object.entries(res.arms || {}).map(([name, a]) => ({
       name, verdict: a.verdict, gain: isNum(a.gain) ? pc(a.gain) : '–',
       ci: a.ci ? `${pc(-a.ci[1])} to ${pc(-a.ci[0])}` : '–',
-      same: a.same_output === null ? 'not checked' : (a.same_output ? 'same' : 'different'), secs: S.num(a.median_s, 2),
+      same: a.same_output === null ? 'not checked' : (a.same_output ? 'same' : 'different'), ms: S.num(a.median_ms, 1),
     }));
     const cols = [
       { label: 'Setting', key: 'name' },
       { label: 'Result', get: (r) => S.chip(r.verdict, VERDICT_CLS[r.verdict] || '') },
       { label: 'Faster by', key: 'gain', num: true, title: 'The median change over the rounds. Positive: less time for the same work.' },
       { label: '95% interval', key: 'ci', num: true },
-      { label: 'Seconds', key: 'secs', num: true, title: 'The median time of one pass over the test requests' },
+      { label: 'ms per token', key: 'ms', num: true, title: 'The median time that Strata spent for each generated token, over the 6 turns of one pass. Less is faster.' },
       { label: 'Text', key: 'same', title: 'Is the text of the reply the same as with the current settings?' },
     ];
     out.push(S.table(cols, rows));
@@ -167,7 +166,7 @@
       host = el('div', { class: 'mytune' });
       if (!snap) loadState(A);
       loadPlan(A);
-      const card = S.card({ q: 'Tune with the standard test', sub: 'Replays 3 fixed requests with each setting, in turns, and keeps a change only when it is larger than the noise of this PC.' }, host);
+      const card = S.card({ q: 'Tune with the standard test', sub: 'Replays one 6-turn conversation with each setting, in turns, and keeps a change only when it is larger than the noise of this PC.' }, host);
       S.fill(host, ...body(A));
       return card;
     },

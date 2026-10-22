@@ -372,7 +372,7 @@
       const host = el('div', { class: 'workload-host' });
       const running = (A.flow && A.flow.state === 'running') || (A.strata().tune && A.strata().tune.state === 'running');
       S.fill(sec, el('div', { class: 'view-head' }, el('h2', { text: 'Tune' }), paneSeg(),
-        el('span', { class: 'muted', text: 'replay 3 fixed requests with each setting, and keep only a change that beats the noise of this PC' })),
+        el('span', { class: 'muted', text: 'replay one 6-turn conversation with each setting, and keep only a change that beats the noise of this PC' })),
         running ? el('p', { class: 'note', text: 'A calibration of this PC is running. Open "This PC" to follow it.' }) : null, S.mytune.card(A), host);
       S.workload.mount(A, host);
       return;

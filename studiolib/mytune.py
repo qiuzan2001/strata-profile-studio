@@ -1,7 +1,7 @@
 """The tune with the standard test: the closed loop.
 
   quiet      nobody else uses Strata (the engine log shows no request for a while)
-  analyse    the standard test: 3 fixed requests (replay.STANDARD_SHAPES), the same on every PC and in every run
+  analyse    the standard test: one conversation of 6 turns (replay.STANDARD_TURNS), the same on every PC and in every run
   measure    interleaved rounds (studiolib/abtest.py): the current settings twice (the noise of this PC) and each
              candidate once, per round, in a random order. The replay (studiolib/replay.py) is the work.
   apply      the winner goes into the run config, after a copy of the file
@@ -99,7 +99,7 @@ class MyTune:
     def plan(self, opts: dict | None = None) -> dict:
         """What a run would do and how long it takes (an estimate from the log's own speeds), without a request."""
         opts = opts or {}
-        shapes = replay.standard_shapes()
+        shapes = replay.standard_turns()
         cur = self._current()
         arms = candidates(cur, bool(opts.get("quick")))
         rounds = max(abtest.MIN_ROUNDS, int(opts.get("rounds") or DEFAULT_ROUNDS))
@@ -221,8 +221,10 @@ class MyTune:
                     raise _Stop("cancelled", "Cancelled. Nothing was written.")
                 if out["error"]:
                     raise _Stop("failed", f"A replay request failed: {out['error']}")
-                if out["cached"]:
-                    ok = False                           # the engine reused a prefix: the pass was not a clean read
+                if out["cached"] > replay.CLEAN_FIRST:
+                    ok = False                           # the first turn found a prefix cached: it was not a clean read
+                if out["reuse_min"] is not None and out["reuse_min"] < replay.REUSE_MIN:
+                    ok = False                           # a later turn did not reuse the conversation (evicted, or no cache)
                 after = self._log_count()
                 if before is not None and after is not None and after - before > len(shapes):
                     ok = False                           # somebody else used Strata in this pass
@@ -230,10 +232,10 @@ class MyTune:
             i += 1
             if not ok:
                 spoiled += 1
-                self._log(f"{label}: round {i} dropped (another request reached Strata, or a prompt was reused).")
+                self._log(f"{label}: round {i} dropped (another request reached Strata, or the conversation was not reused as planned).")
                 continue
             for name, out in results.items():
-                scores[name].append(out["score_s"])
+                scores[name].append(out["score_ms"])
                 hashes[name].append(out["hash"])
                 stats[name].append(out)
             done += 1
@@ -255,9 +257,9 @@ class MyTune:
             same = m["hashes"][name] == m["hashes"]["base"]
             v["same_output"] = same if aa_same else None
             v["tune"] = m["tunes"][name]
-            v["median_s"] = _median(m["scores"][name])
+            v["median_ms"] = _median(m["scores"][name])
             out["arms"][name] = v
-        out["base_median_s"] = _median(base)
+        out["base_median_ms"] = _median(base)
         return out
 
     # ------------------------------------------------------------------------------------------ the run
@@ -302,7 +304,7 @@ class MyTune:
         self._stage("quiet", "done")
         # ------------------------------------------------------------------ analyse
         self._stage("analyse", "running", "Reading the shape of the requests.")
-        shapes = replay.standard_shapes()
+        shapes = replay.standard_turns()
         self._log(replay.STANDARD_NOTE)
         cur = self._current()
         arms = candidates(cur, bool(opts.get("quick")))
@@ -319,7 +321,7 @@ class MyTune:
         m = self._measure(shapes, sizer, {"base": {}, **arms}, rounds, seed=1, label="measure")
         v = self._verdicts(m)
         if m["rounds"] < abtest.MIN_ROUNDS:
-            raise _Stop("failed", f"Only {m['rounds']} clean rounds. Other requests reached Strata during the tune. Run it again when Strata is quiet.")
+            raise _Stop("failed", f"Only {m['rounds']} clean rounds. Other requests reached Strata during the tune, or Strata did not keep the conversation between turns. Run it again when Strata is quiet.")
         winners = {n: a for n, a in v["arms"].items() if a["verdict"] == "better" and a["same_output"] is not False}
         excluded = [n for n, a in v["arms"].items() if a["same_output"] is False]
         combo = None
@@ -347,7 +349,7 @@ class MyTune:
             best = None
         self._stage("measure", "done")
         result = {"shapes": shapes, "rounds": m["rounds"], "spoiled": m["spoiled"], "current": cur, "floor": v["floor"],
-                  "output_check": v["output_check"], "base_median_s": v["base_median_s"], "arms": v["arms"],
+                  "output_check": v["output_check"], "base_median_ms": v["base_median_ms"], "arms": v["arms"],
                   "excluded_for_output": excluded, "combined": combo, "winner": None, "applied": None,
                   "verify": None, "rolled_back": False}
         if best is None:

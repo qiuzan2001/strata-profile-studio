@@ -13,14 +13,15 @@ from test_workload import AGENT, line
 CONFIG = {"exe": "engine/strata", "args": ["--native", "x.gguf", "--pcie-frac", "0.55", "--spec-min-p", "0.5",
                                               "--spec", "3", "--prefill", "2048"]}
 OPTS = {"rounds": 5}
-REAL_SHAPES = replay.STANDARD_SHAPES
-FAST_SHAPES = ({"read": 1500, "generated": 60, "capped": False}, {"read": 3000, "generated": 80, "capped": False})
+REAL_TURNS = replay.STANDARD_TURNS
+FAST_TURNS = ({"read": 1500, "generated": 60, "kind": "copy"}, {"read": 600, "generated": 80, "kind": "free"},
+              {"read": 500, "generated": 40, "kind": "copy"})
 
 
 def use_fast_shapes(test):
-    """The loop tests replay small shapes. test_the_standard_shapes_are_the_real_ones checks the real constants."""
-    replay.STANDARD_SHAPES = FAST_SHAPES
-    test.addCleanup(setattr, replay, "STANDARD_SHAPES", REAL_SHAPES)
+    """The loop tests replay a small conversation. test_the_standard_turns_are_the_real_ones checks the real constants."""
+    replay.STANDARD_TURNS = FAST_TURNS
+    test.addCleanup(setattr, replay, "STANDARD_TURNS", REAL_TURNS)
 OK_CMD = [sys.executable, "-c", "pass"]
 
 
@@ -243,12 +244,13 @@ class Loop(unittest.TestCase):
             mt.cancel_event.set()
             wait_done(mt)
 
-    def test_the_standard_shapes_are_the_real_ones(self):
-        self.assertEqual([(s["read"], s["generated"]) for s in REAL_SHAPES], [(2000, 256), (8000, 256), (16000, 256)])
+    def test_the_standard_turns_are_the_real_ones(self):
+        self.assertEqual([(t["read"], t["generated"]) for t in REAL_TURNS],
+                         [(24000, 128), (1500, 384), (3000, 192), (1000, 512), (2000, 384), (800, 128)])
 
     def test_the_plan_needs_no_log_and_gives_no_estimate_without_one(self):
         p = self.tune(engine_log=None).plan({})
-        self.assertEqual(p["shapes"], replay.standard_shapes())
+        self.assertEqual(p["shapes"], replay.standard_turns())
         self.assertIn("same on every PC", p["note"])
         self.assertIsNone(p["seconds"])                               # no log, no speeds, no estimate
 
@@ -266,8 +268,17 @@ class Loop(unittest.TestCase):
         mt.start({"quick": True, "rounds": 5})
         st = wait_done(mt, 120)
         self.assertEqual(st["state"], "done", st["message"])
-        self.assertEqual([s["read"] for s in st["result"]["shapes"]], [1500, 3000])
+        self.assertEqual([s["read"] for s in st["result"]["shapes"]], [1500, 600, 500])
         self.assertEqual(st["result"]["winner"]["tune"], {"pcie_frac": 0.35})
+
+    def test_a_strata_that_does_not_keep_the_conversation_fails_the_run_with_a_reason(self):
+        self.fake.conv_cache_on = False
+        mt = self.tune(engine_log=None)
+        mt.start({"quick": True, "rounds": 5})
+        st = wait_done(mt, 120)
+        self.assertEqual(st["state"], "failed")
+        self.assertIn("did not keep the conversation", st["message"])
+        self.assertTrue(any("not reused as planned" in l for l in st["log"]))
 
     def test_the_plan_names_arms_rounds_and_current_values(self):
         p = self.tune().plan({})

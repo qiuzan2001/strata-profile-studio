@@ -156,11 +156,17 @@ short prompt, and keeps a change only when it beats the noise of this PC.
 
 1. **Quiet check.** It waits until the engine log shows no request for 90 s. If another client keeps using Strata, it
    stops and says so.
-2. **The standard test.** 3 fixed requests: 2,000, 8,000 and 16,000 new tokens read, each with 256 tokens of reply.
-   They are the same on every PC and in every run, so two tunes can be compared. They are a benchmark, not a claim
-   about your traffic: the Studio does not guess your workload, and it has no scenario presets. It builds the prompts
-   from plain filler text and asks the model to copy a passage, so the reply has the planned length. **The text is not
-   yours.** The Studio never sends your prompts. How well drafts work on your own text is not measured.
+2. **The standard test.** One conversation of 6 turns, built like a coding agent's session. The first turn reads 24,000
+   tokens. Each later turn adds 800 to 3,000 new tokens on top of the conversation that Strata already holds (the
+   engine reuses the turn before), and the replies have 128 to 512 tokens (1,728 in all). Some replies copy text, like a
+   diff, and some are free text, like an explanation. The turns are the same on every PC and in every run, so two tunes
+   can be compared. They are a benchmark, not a claim about your traffic: the Studio does not guess your workload, and it
+   has no scenario presets. The prompts are plain filler text and the history holds fixed text for the replies, so every
+   setting gets the same prompts. **The text is not yours.** The Studio never sends your prompts. How well drafts work on
+   your own text is not measured. The score is the time that the engine spends for each generated token, because the
+   settings under test act on the reply, not on the prompt read, and the length of a reply varies a little from run to run. If Strata does not reuse the conversation between turns,
+   the pass is dropped and the tune stops with that reason. The test fills the conversation cache of Strata with its own
+   conversations, so the next request of your own session may have to read its prompt again.
 3. **Only settings that do not change the answer.** The per-request keys `pcie_frac` and `spec_min_p`. The engine
    verifies every draft and expert placement does not choose the token. The Studio still compares the reply text of
    each try with the reply text of the current settings. A try with another text is never applied. Settings that

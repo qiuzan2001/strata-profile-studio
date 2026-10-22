@@ -127,6 +127,8 @@ class FakeStrata:
         # the streamed chat: (prompt tok/s, reply tok/s) for the request's strata_tune; the tunes whose reply text differs
         self.chat_speeds = lambda tune: (2000.0, 80.0)
         self.chat_differs = lambda tune: False
+        self.conv_cache_on = True                     # the engine keeps a checkpoint of a turn for the next turn
+        self._conv = []                               # the prompts of the kept checkpoints
         self.settings_doc = {"file": "strata-swift-1.5-iq3_s.json", "loaded": True, "settings": [
             {"id": "pcie_frac", "name": "--pcie-frac", "kind": "arg", "loaded_now": "0.55", "next_load": None,
              "run_config": None, "calibrated": True, "edit": None, "about": "x"},
@@ -360,18 +362,34 @@ class FakeStrata:
             with self.lock:
                 self.last = request_doc(prompt_tokens=18, generated=8, prompt_ms=210.0, decode_ms=95.0, adapt=7.0)
             return h._reply(200, {"id": "x", "choices": [{"message": {"role": "assistant", "content": "OK"}}]})
-        # a streamed request, as the replay sends it: 1.3 tokens a word; the reply copies the passage if there is one
-        prompt = str(((body.get("messages") or [{}])[-1]).get("content") or "")
+        # a streamed request, as the replay sends it: 1.3 tokens a word. The reply copies the passage of the last user
+        # message, or (a free task) is made of numbered words. A turn that keeps a checkpoint is reused by the next turn
+        # whose prompt starts with it.
+        msgs = body.get("messages") or [{}]
+        full = "".join(f"{m.get('role')}:{m.get('content')}\n" for m in msgs)
+        last = str(msgs[-1].get("content") or "")
         tune = body.get("strata_tune") or {}
-        ptoks = 15 + round(len(prompt.split()) * 1.3)
+        tokens = lambda text: 15 + round(len(text.split()) * 1.3)
+        ptoks = tokens(full)
+        cache_n = 0
+        with self.lock:
+            if self.conv_cache_on:
+                cache_n = max([tokens(c) for c in self._conv if full.startswith(c)] or [0])
+                if body.get("strata_checkpoint") is not False:
+                    self._conv.append(full)
         head = "Copy the following passage word for word. Then stop.\n\n"
-        reply = prompt.split(head, 1)[1].split() if head in prompt else ["OK"]
+        if head in last:
+            reply = last.split(head, 1)[1].split()
+        elif "garbage collector" in last:
+            reply = [f"w{i}" for i in range(2000)]
+        else:
+            reply = ["OK"]
         reply = reply[:max(1, int(int(body.get("max_tokens") or 16) / 1.3))]
         if self.chat_differs(tune):
             reply = reply + ["extra"]
         ctoks = round(len(reply) * 1.3)
         p_tps, d_tps = self.chat_speeds(tune)
-        pms, dms = ptoks / p_tps * 1000, ctoks / d_tps * 1000
+        pms, dms = max(0.1, (ptoks - cache_n) / p_tps * 1000), ctoks / d_tps * 1000
         with self.lock:
             self.last = request_doc(prompt_tokens=ptoks, generated=ctoks, prompt_ms=pms, decode_ms=dms, adapt=7.0)
         h.send_response(200)
@@ -388,7 +406,7 @@ class FakeStrata:
         for w in reply:
             sse({"choices": [{"delta": {"content": w + " "}}]})
         sse({"choices": [], "usage": {"prompt_tokens": ptoks, "completion_tokens": ctoks},
-             "timings": {"prompt_n": ptoks, "cache_n": 0, "prompt_ms": round(pms, 1), "predicted_n": ctoks,
+             "timings": {"prompt_n": ptoks - cache_n, "cache_n": cache_n, "prompt_ms": round(pms, 1), "predicted_n": ctoks,
                          "predicted_ms": round(dms, 1), "draft_n": 10, "draft_n_accepted": 8}})
         sse(b"[DONE]")
 
