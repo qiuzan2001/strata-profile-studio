@@ -13,7 +13,7 @@ import socket
 import urllib.parse
 from pathlib import Path
 
-from . import __version__, calibparse, cardmake, compare as compare_mod, configwrite, settings as settings_mod
+from . import __version__, calibparse, cardmake, compare as compare_mod, configwrite, settings as settings_mod, workload
 from .flow import FlowError
 from .poller import MSG_KEY, MSG_PROFILE_OFF
 from .reports import REPORT_ID_RE, ReportError
@@ -23,7 +23,7 @@ from .strata import StrataError
 MAX_POST = 64 * 1024
 STATIC = {name: "text/javascript; charset=utf-8" for name in
           ("lib.js", "charts.js", "diagram.js", "panel.js", "now.js", "runs.js", "compare.js", "expertmap.js", "tune.js",
-           "settings.js", "share.js", "app.js",
+           "settings.js", "workload.js", "share.js", "app.js",
            "vendor/chart-4.4.1.umd.js")}
 STATIC.update({"style.css": "text/css; charset=utf-8", "favicon.svg": "image/svg+xml"})
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "
@@ -496,6 +496,14 @@ def make_handler(app: StudioApp):
                 return self._json(200, app.settings_doc())
             if path == "/api/settings/apply-preview":
                 return self._apply_preview((query.get("report") or [""])[0])
+            if path == "/api/workload":
+                try:
+                    last = int((query.get("last") or [workload.DEFAULT_LAST])[0])
+                    min_prompt = int((query.get("min_prompt") or ["0"])[0])
+                except ValueError:
+                    return self._error(400, "Give last and min_prompt as whole numbers.")
+                log = app.engine_log.path if app.engine_log else None
+                return self._json(200, workload.document(log, last, min_prompt))
             if path == "/api/hardware":
                 return self._json(200, app.hardware_doc())
             if path == "/api/host":

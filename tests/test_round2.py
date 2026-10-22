@@ -171,6 +171,25 @@ class Edits(unittest.TestCase):
         self.assertEqual(len(res["changes"]), 4)
         self.assertTrue((d / "strata-x.json.bak").exists())
 
+    def test_the_answer_changing_settings_are_marked_and_the_integer_key_is_written_as_a_number(self):
+        for rid, effect in (("reasoning_budget_tokens", "changes"), ("route_tail_skip", "changes"),
+                            ("suffix_draft", "same"), ("lookup_chain", "same")):
+            self.assertEqual(CONTROLS[rid]["effect"], effect, rid)
+        self.assertNotIn("effect", CONTROLS["pcie_frac"])              # not classified: no claim
+        self.assertIn("whole", check_value("reasoning_budget_tokens", "12.5"))
+        self.assertIn("least", check_value("suffix_draft", "-1"))
+        d = tmpdir(self)
+        cfg = d / "strata-x.json"
+        cfg.write_text(json.dumps({"args": ["--pack", "p"], "env": {}}) + "\n")
+        sha = configwrite.file_doc(cfg)["sha"]
+        configwrite.apply_edits(cfg, [{"id": "reasoning_budget_tokens", "value": "800"}, {"id": "suffix_draft", "value": "2"},
+                                      {"id": "route_tail_skip", "value": "0"}], sha)
+        new = json.loads(cfg.read_text())
+        self.assertEqual(new["reasoning_budget_tokens"], 800)
+        self.assertIsInstance(new["reasoning_budget_tokens"], int)
+        self.assertEqual(new["args"], ["--pack", "p", "--suffix-draft", "2"])
+        self.assertEqual(new["env"], {"STRATA_ROUTE_TAIL_SKIP": "0"})
+
     def test_apply_edits_refuses(self):
         d = tmpdir(self)
         cfg = d / "strata-x.json"

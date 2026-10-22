@@ -142,6 +142,19 @@ The screenshots show the real data of one PC (RTX 5070 Ti 16 GB, Ryzen 7 5800X3D
 - What the calibration measured, round by round, and which value it kept.
 - Whether the tune helped the requests that you send, not only the calibration's own test.
 
+### Workload
+
+- What the requests of this PC look like: the prompt length, the reused share of the prompt, the reply length, the
+  speeds, and how the time splits between the prompt read and the reply.
+- The Studio reads the engine log. It reads no prompt text. Choose how many requests to count. A filter removes the
+  short requests of the profile and the tune.
+- Five scenario presets: short chat, long document, browser agent, coding agent and structured extraction. The Studio
+  names the preset that is closest to your requests.
+- **The shapes of the presets are assumed. They are not measured.** The time split of a preset is an estimate from the
+  speeds in your own log.
+- A short list of ideas for your workload. Each idea says what it is based on. None of them is a measured gain.
+- The view only reads. It writes no file and starts no run.
+
 ### Settings
 
 ![Settings](docs/screenshots/settings.png)

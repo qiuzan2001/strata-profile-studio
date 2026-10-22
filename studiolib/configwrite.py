@@ -241,7 +241,7 @@ def apply_edits(config_path, edits: list, sha: str, busy_reason: str | None = No
             if value is None:
                 cfg.pop(name, None)
             else:
-                cfg[name] = value
+                cfg[name] = int(float(value)) if CONTROLS[rid].get("int") else value
         if not same_value(before, value) and not (before is None and value is None):
             changes.append({"flag": name, "from": None if before is None else str(before), "to": value})
     if not changes:

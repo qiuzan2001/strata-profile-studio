@@ -261,6 +261,8 @@
       const tr = el('tr', { class: `${notes.length ? 'disagree-row' : ''} ${edits.has(r.id) ? 'edited' : ''}` },
         el('td', null, el('div', { class: 'mono', text: r.name }), r.calibrated ? S.chip('calibrated', 'small', 'Tune this PC measures this setting.') : null,
           c && c.group === 'setup' ? S.chip('set by setup', 'small', 'setup.py wrote this flag for this install. The Studio does not remove it.') : null,
+          c && c.effect === 'changes' ? S.chip('changes the answers', 'warn small', 'This setting can change the answers. Check the results of your own tasks. The Tune on your workload never changes it.') : null,
+          c && c.effect === 'same' ? S.chip('same answers', 'small', 'The answers do not change. The drafts are checked like the MTP drafts.') : null,
           el('div', { class: 'about', text: r.about }), notes.map((n) => el('div', { class: 'disagree', text: `⚠ ${n}` }))),
         el('td', { class: 'num', text: r.now ?? '–' }),
         el('td', { class: 'num', text: r.next_load ?? (r.now !== null ? 'engine default' : '–') }),

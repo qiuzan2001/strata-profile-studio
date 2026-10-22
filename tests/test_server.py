@@ -542,11 +542,11 @@ class Vendored(unittest.TestCase):
             for word in bad:
                 self.assertNotIn(word, text, f"{f.name} uses {word}")
 
-    def test_page_has_five_views_a_panel_and_a_dialog(self):
+    def test_page_has_six_views_a_panel_and_a_dialog(self):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         nav = re.findall(r'<a class="tab" href="#(\w+)"', html)
-        self.assertEqual(nav, ["now", "runs", "compare", "tune", "settings"])
-        self.assertEqual(re.findall(r'<section id="view-(\w+)"', html), ["now", "runs", "compare", "tune", "settings"])
+        self.assertEqual(nav, ["now", "runs", "compare", "tune", "workload", "settings"])
+        self.assertEqual(re.findall(r'<section id="view-(\w+)"', html), ["now", "runs", "compare", "tune", "workload", "settings"])
         for needle in ('id="panel"', '<dialog id="dialog">', 'id="banner"', 'id="status"', 'id="theme"'):
             self.assertIn(needle, html)
 

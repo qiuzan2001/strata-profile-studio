@@ -286,7 +286,7 @@ S.studioKey = () => { try { return sessionStorage.getItem('studio.key') || ''; }
 S.route = function route() {
   const h = decodeURIComponent((location.hash || '#now').slice(1));
   const parts = h.split('/').filter(Boolean);
-  const view = ['now', 'runs', 'compare', 'tune', 'settings'].includes(parts[0]) ? parts[0] : 'now';
+  const view = ['now', 'runs', 'compare', 'tune', 'workload', 'settings'].includes(parts[0]) ? parts[0] : 'now';
   const r = { view, parts, panel: null };
   const ri = parts.indexOf('r');
   if (ri >= 0 && parts[ri + 1]) r.panel = { where: view === 'runs' ? 'report' : 'live', report: view === 'runs' ? parts[1] : null, id: parts[ri + 1] };

@@ -183,6 +183,7 @@
     runs: ['reports', 'state', 'run', 'tunes'],
     compare: ['reports', 'tunes', 'defaults', 'state'],
     tune: ['flow', 'tunes', 'state', 'reports', 'settings'],
+    workload: ['state'],
     settings: ['settings', 'reports', 'state', 'tunes'],
   };
   const inflight = {};
@@ -316,7 +317,7 @@
   // ---------------------------------------------------------------------------------------- the router
   function renderView(full) {
     const r = A.route;
-    for (const v of ['now', 'runs', 'compare', 'tune', 'settings']) S.show(document.getElementById(`view-${v}`), v === r.view);
+    for (const v of ['now', 'runs', 'compare', 'tune', 'workload', 'settings']) S.show(document.getElementById(`view-${v}`), v === r.view);
     for (const a of document.querySelectorAll('nav.tabs a')) {
       const on = a.dataset.view === r.view;
       S.setClass(a, 'on', on);

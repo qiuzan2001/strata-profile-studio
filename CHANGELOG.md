@@ -2,6 +2,13 @@
 
 One PC measured the numbers below: RTX 5070 Ti 16 GB, Ryzen 7 5800X3D, Swift 1.5 IQ3_S, 2026-10-15.
 
+## Unreleased
+
+- **Workload view:** reads the engine log and shows what the requests of this PC look like (prompt length, reused share,
+  reply length, speeds, the split of the time). It compares them with five scenario presets and names the closest one.
+  The shapes of the presets are assumed, not measured. `GET /api/workload?last=N&min_prompt=N` gives the same data.
+  The view only reads.
+
 ## 0.1.2 (2026-10-16)
 
 - **Result cards:** `studio.py --card <report>` writes the card of one profile run as `card.html`, `card.svg`,

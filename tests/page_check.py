@@ -272,8 +272,26 @@ def main():
             req = "agent-1" if any(q["id"] == "agent-1" for q in get(f"{sc.base}/api/reports/{pair[1]}")["requests"]) else "chat-1"
             routes = [("now", "now"), ("request-live", f"now/r/{seq}"), ("runs", "runs"), ("run", f"runs/{pair[1]}"),
                       ("request-report", f"runs/{pair[1]}/r/{req}"), ("compare-pair", f"compare/{pair[0]}/{pair[1]}"),
-                      ("compare", "compare"), ("tune", "tune"), ("settings", "settings")]
+                      ("compare", "compare"), ("tune", "tune"), ("workload", "workload"), ("settings", "settings")]
             shoot(browser, sc, out, routes, all_sizes)
+            # workload: with requests in the engine log the page shows the counts and names the closest preset
+            wl_log = sc.dir / "none.log"
+            wl_log.write_text("\n".join(
+                f"strata serve: prompt {p} tokens = {r} reused + {p - r} read in {pm} ms ({(p - r) / pm * 1000:.1f} tok/s), "
+                f"{g} generated in {dm} ms ({g / dm * 1000:.1f} tok/s), drafts accepted 80 of 100, 1 checkpoints"
+                for p, r, g, pm, dm in ((20000, 8000, 800, 4000, 8000), (24000, 10000, 1000, 5000, 11000))) + "\n")
+            try:
+                page = browser.new_page(viewport={"width": 1400, "height": 1000})
+                page.goto(f"{sc.base}/#workload")
+                page.wait_for_selector("section#view-workload .tiles", timeout=8000)
+                chip = page.locator("section#view-workload tr", has=page.locator(".chip", has_text="Closest")).first.inner_text()
+                record("workload: the closest preset is the browser agent", "Browser agent" in chip, chip.replace("\n", " ")[:80])
+                record("workload: the page says the preset shapes are assumed",
+                       "assumed" in page.locator("section#view-workload").inner_text())
+                page.screenshot(path=str(out / "workload-light.png"), full_page=True)
+                page.close()
+            finally:
+                wl_log.unlink(missing_ok=True)
             # no flicker: 30 s of live updates (hardware every 1 s, a new request every 6 s) change attributes and text
             # only; no node is added or removed in the live regions, and the layout boxes stay where they are
             page = browser.new_page(viewport={"width": 1400, "height": 900})

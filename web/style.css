@@ -670,3 +670,12 @@ dialog.share { width: min(1100px, calc(100vw - 32px)); max-width: none; }
 .stock-table td { padding: 3px 0; overflow-wrap: anywhere; }
 .share-why { color: var(--ink-3); }
 .share-result a { color: var(--accent); }
+
+/* Workload: the time split of the prompt read and the reply (two fills, each labelled in the bar) */
+.split { display: flex; width: 100%; min-width: 140px; height: 22px; border-radius: 4px; overflow: hidden; gap: 2px; background: var(--surface-2); }
+.split span { display: block; height: 100%; font-size: 12px; line-height: 22px; color: #fff; white-space: nowrap; overflow: hidden; padding: 0 6px; box-sizing: border-box; }
+.split-a { background: var(--k-gpu); border-radius: 4px 0 0 4px; }
+.split-b { background: var(--k-dequant); border-radius: 0 4px 4px 0; }
+tr.mine td { font-weight: 600; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .split span { color: #111110; } }
+:root[data-theme="dark"] .split span { color: #111110; }

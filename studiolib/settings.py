@@ -38,6 +38,14 @@ SPEED_SETTINGS = (
      "The largest prompt chunk the CPU share works on (1,024 tokens by default)."),
     ("expert_profile_save", "expert_profile_save", "key", None, False,
      "Saves the adaptive tier's expert ranking so the next start fills the cache with it."),
+    ("suffix_draft", "--suffix-draft", "arg", None, False,
+     "Prompt lookup: how many tokens of an earlier repeat must match before the engine drafts from it. 0 uses the MTP drafts only."),
+    ("lookup_chain", "--lookup-chain", "arg", None, False,
+     "After the MTP drafts, adds up to this many prompt-lookup drafts. Off by default."),
+    ("reasoning_budget_tokens", "reasoning_budget_tokens", "key", None, False,
+     "The most tokens that the thinking of a request may use. 0 means no limit. A short limit makes replies faster and can change the answers."),
+    ("route_tail_skip", "STRATA_ROUTE_TAIL_SKIP", "env", None, False,
+     "In a verify window, a missed expert that every token ranks 7th or lower is not computed. 0 turns this off."),
 )
 ABOUT = {row[0]: row[5] for row in SPEED_SETTINGS}
 
@@ -75,6 +83,16 @@ CONTROLS = {
                               "engine_default": "3072", "source": "Strata's prefill: at least 1024"},
     "expert_profile_save": {"control": "text", "specials": ["default"], "engine_default": "off",
                             "source": "a file path. The engine saves its learned profile there every 10 min"},
+    # `effect`: "same" - the answer does not change (the drafts are checked like the MTP's); "changes" - the answer can
+    # change, so check the results of your own tasks. The Tune on your workload never changes a "changes" setting.
+    "suffix_draft": {"control": "number", "min": 0, "step": 1, "specials": ["default"], "engine_default": "3",
+                     "source": "the engine's help: 0 = the MTP only", "effect": "same"},
+    "lookup_chain": {"control": "number", "min": 0, "step": 1, "specials": ["default"], "engine_default": "0 (off)",
+                     "source": "the engine's help: opt-in, K extra prompt-lookup drafts", "effect": "same"},
+    "reasoning_budget_tokens": {"control": "number", "min": 0, "step": 50, "specials": ["default"], "engine_default": "0 (no limit)",
+                                "source": "the server's run config: an integer of 0 or more", "effect": "changes", "int": True},
+    "route_tail_skip": {"control": "number", "min": 0, "max": 9, "step": 1, "specials": ["default"],
+                        "engine_default": "7 on CUDA", "source": "the docs: 1 to 9 is a rank, 0 turns it off", "effect": "changes"},
 }
 
 # What a Reset writes, per setting (the Settings page's Reset and "Reset the calibrated settings"):
@@ -89,7 +107,9 @@ RESET = {"pcie_frac": ("calibration", None), "spec_min_p": ("calibration", "0.5"
          "adapt_every": ("calibration", None), "adapt_swaps": ("calibration", None), "adapt_decay": ("calibration", None),
          "prefill_cpu_share": ("calibration", None), "prefill_cpu_share_max": ("calibration", None),
          "spec": ("setup", "4"), "expert_cache": ("setup", "auto"), "kv_resident": ("setup", KEEP),
-         "max_context": ("setup", KEEP), "vram_reserve_mib": ("user", None), "expert_profile_save": ("user", None)}
+         "max_context": ("setup", KEEP), "vram_reserve_mib": ("user", None), "expert_profile_save": ("user", None),
+         "suffix_draft": ("user", None), "lookup_chain": ("user", None), "reasoning_budget_tokens": ("user", None),
+         "route_tail_skip": ("user", None)}
 for _rid, (_group, _to) in RESET.items():
     CONTROLS[_rid]["group"], CONTROLS[_rid]["reset_to"] = _group, _to
     if _group == "setup":                                 # no "default": removing the flag can stop the engine
@@ -114,7 +134,7 @@ def check_value(rid: str, value) -> str | None:
         num = float(v)
     except ValueError:
         return f"{v} is not a number."
-    if spec.get("step", 1) == 1 and spec["control"] == "number" and num != int(num):
+    if (spec.get("step", 1) == 1 or spec.get("int")) and spec["control"] == "number" and num != int(num):
         return f"{v} is not a whole number."
     lo, hi = spec.get("min"), spec.get("max")
     if spec.get("or_min") and num != 0 and num < spec["or_min"]:
