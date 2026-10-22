@@ -205,6 +205,7 @@ class MyTune:
         scores = {n: [] for n in names}
         hashes = {n: [] for n in names}
         stats = {n: [] for n in names}
+        kinds = {k: {n: [] for n in names} for k in ("copy", "free")}
         spoiled = 0
         done = 0
         total = rounds
@@ -238,31 +239,49 @@ class MyTune:
                 scores[name].append(out["score_ms"])
                 hashes[name].append(out["hash"])
                 stats[name].append(out)
+                for k in kinds:
+                    kinds[k][name].append(out["kind_ms"][k])
             done += 1
             self._set(progress={"label": label, "round": done, "rounds": total, "spoiled": spoiled})
-        return {"names": names, "tunes": tunes, "scores": scores, "hashes": hashes, "stats": stats, "rounds": done,
+        return {"names": names, "tunes": tunes, "scores": scores, "kinds": kinds, "hashes": hashes, "stats": stats, "rounds": done,
                 "spoiled": spoiled}
 
     @staticmethod
     def _verdicts(m: dict, seed: int = 1) -> dict:
+        """One verdict per candidate. The copy replies and the free replies are scored and compared apart (each with the
+        noise floor of its own A/A pair). A candidate is better when it is better in one kind and worse in none, and
+        worse when it is worse in one kind. Its gain is the mean of the two kinds, so that it does not depend on how
+        many tokens a pass happened to generate in each."""
         base, aa = m["scores"]["base"], m["scores"]["base_aa"]
-        floor = abtest.noise_floor(base, aa)
+        usable = [k for k, d in m["kinds"].items() if all(x is not None for x in d["base"] + d["base_aa"])]
+        floors = {k: abtest.noise_floor(m["kinds"][k]["base"], m["kinds"][k]["base_aa"]) for k in usable}
+        floor = max(floors.values()) if floors else abtest.noise_floor(base, aa)
         # the text of the two copies of the current settings: if they differ by themselves, a text check says nothing
         aa_same = m["hashes"]["base"] == m["hashes"]["base_aa"]
-        out = {"floor": floor, "output_check": "reliable" if aa_same else "unreliable", "arms": {}}
+        out = {"floor": floor, "floors": floors, "output_check": "reliable" if aa_same else "unreliable", "arms": {}}
         for name in m["names"]:
             if name in ("base", "base_aa"):
                 continue
-            v = abtest.verdict(base, m["scores"][name], floor, lower_is_better=True, min_gain=MIN_GAIN, seed=seed)
+            per = {k: abtest.verdict(m["kinds"][k]["base"], m["kinds"][k][name], floors[k], lower_is_better=True,
+                                     min_gain=MIN_GAIN, seed=seed)
+                   for k in usable if all(x is not None for x in m["kinds"][k][name])}
+            if per:
+                v = _combine(per)
+            else:
+                v = abtest.verdict(base, m["scores"][name], floor, lower_is_better=True, min_gain=MIN_GAIN, seed=seed)
             same = m["hashes"][name] == m["hashes"]["base"]
             v["same_output"] = same if aa_same else None
             v["tune"] = m["tunes"][name]
             v["median_ms"] = _median(m["scores"][name])
+            v["kinds"] = {k: {"verdict": x["verdict"], "gain": x["gain"], "ci": x["ci"], "floor": x["floor"],
+                              "median_ms": _median(m["kinds"][k][name]), "base_median_ms": _median(m["kinds"][k]["base"])}
+                          for k, x in per.items()}
             out["arms"][name] = v
         out["base_median_ms"] = _median(base)
         # every round of every arm, so that a noisy run can be read afterwards (the order is the order of the rounds)
-        out["per_round"] = {n: [{"score_ms": o["score_ms"], "generated": o["generated"], "decode_tok_s": o["decode_tok_s"],
-                                 "drafts_accepted": o["drafts_accepted"], "wall_s": o["wall_s"], "hash": o["hash"][:8]}
+        out["per_round"] = {n: [{"score_ms": o["score_ms"], "kind_ms": o["kind_ms"], "generated": o["generated"],
+                                 "decode_tok_s": o["decode_tok_s"], "drafts_accepted": o["drafts_accepted"],
+                                 "wall_s": o["wall_s"], "hash": o["hash"][:8]}
                                 for o in m["stats"][n]] for n in m["names"]}
         return out
 
@@ -352,7 +371,7 @@ class MyTune:
         else:
             best = None
         self._stage("measure", "done")
-        result = {"shapes": shapes, "rounds": m["rounds"], "spoiled": m["spoiled"], "current": cur, "floor": v["floor"],
+        result = {"shapes": shapes, "rounds": m["rounds"], "spoiled": m["spoiled"], "current": cur, "floor": v["floor"], "floors": v["floors"],
                   "output_check": v["output_check"], "base_median_ms": v["base_median_ms"], "arms": v["arms"], "per_round": v["per_round"],
                   "excluded_for_output": excluded, "combined": combo, "winner": None, "applied": None,
                   "verify": None, "rolled_back": False}
@@ -446,6 +465,23 @@ class MyTune:
         shutil.copy2(applied["backup"], self.config_path)
         self._log("The old config was copied back.")
         self._restart()
+
+
+def _combine(per: dict) -> dict:
+    """The verdict of a candidate from its verdicts for the copy replies and for the free replies."""
+    vs = list(per.values())
+    if any(x["verdict"] == "not enough rounds" for x in vs):
+        return {**vs[0], "verdict": "not enough rounds", "gain": None, "ci": None}
+    if any(x["verdict"] == "worse" for x in vs):
+        verdict = "worse"
+    elif any(x["verdict"] == "better" for x in vs):
+        verdict = "better"
+    else:
+        verdict = "no change"
+    gain = sum(x["gain"] for x in vs) / len(vs)
+    lead = max(vs, key=lambda x: x["gain"])                 # the interval of the kind with the larger gain
+    return {"rounds": min(x["rounds"] for x in vs), "delta": -gain, "gain": gain, "ci": lead["ci"],
+            "floor": max(x["floor"] for x in vs), "verdict": verdict}
 
 
 def _median(xs):

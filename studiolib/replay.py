@@ -184,11 +184,14 @@ def one_pass(client: Client, turns: list[dict], sizer: Sizer, tune: dict | None,
     """The conversation once. The score of the pass is `score_ms`: the milliseconds that the engine spent per generated
     token (the settings under test act on the reply, not on the prompt read; per token, because the reply length of
     two passes can differ a little even with the same settings), or the wall milliseconds per token when the engine
-    reports no time.
+    reports no time. `kind_ms` has the same score for the copy replies and the free replies alone (None for a kind
+    with no generated token): a copy reply is much faster than a free one, so a pass with more copy tokens would look
+    faster, and the two kinds are compared apart.
     `cached` is what the first turn found cached (it should be nothing); `reuse_min` is the smallest share of a later
     turn's prompt that the engine reused (a real session reuses nearly all of it)."""
     wall = prompt_ms = decode_ms = 0.0
     read = gen = cached = drafts = accepted = 0
+    kind_ms, kind_gen = {"copy": 0.0, "free": 0.0}, {"copy": 0, "free": 0}
     reuse, errors, h = [], [], hashlib.sha256()
     history: list[dict] = []
     prev_tokens = 0
@@ -210,6 +213,8 @@ def one_pass(client: Client, turns: list[dict], sizer: Sizer, tune: dict | None,
         gen += int(u.get("completion_tokens") or t.get("predicted_n") or 0)
         prompt_ms += float(t.get("prompt_ms") or 0.0)
         decode_ms += float(t.get("predicted_ms") or 0.0)
+        kind_ms[turn["kind"]] += float(t.get("predicted_ms") or 0.0)
+        kind_gen[turn["kind"]] += int(u.get("completion_tokens") or t.get("predicted_n") or 0)
         drafts += int(t.get("draft_n") or 0)
         accepted += int(t.get("draft_n_accepted") or 0)
         h.update(r["text"].encode())
@@ -218,7 +223,8 @@ def one_pass(client: Client, turns: list[dict], sizer: Sizer, tune: dict | None,
         history += [user, {"role": "assistant", "content": fixed}]
         prev_tokens = int(sizer.words(turn["generated"]) * sizer.per_word)
     per_token = (decode_ms if decode_ms > 0 else wall * 1000) / max(gen, 1)
-    return {"score_ms": per_token, "wall_s": wall, "prompt_s": prompt_ms / 1000, "read": read,
+    by_kind = {k: (kind_ms[k] / kind_gen[k] if kind_gen[k] and kind_ms[k] > 0 else None) for k in kind_ms}
+    return {"score_ms": per_token, "kind_ms": by_kind, "kind_generated": kind_gen, "wall_s": wall, "prompt_s": prompt_ms / 1000, "read": read,
             "generated": gen, "cached": cached, "reuse_min": min(reuse) if reuse else None,
             "prompt_tok_s": (read / prompt_ms * 1000) if prompt_ms else None,
             "decode_tok_s": (gen / decode_ms * 1000) if decode_ms else None,

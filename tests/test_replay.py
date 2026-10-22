@@ -73,6 +73,9 @@ class AgainstFake(unittest.TestCase):
         self.assertAlmostEqual(out["drafts_accepted"], 0.8)
         # the score is the engine's time per generated token
         self.assertAlmostEqual(out["score_ms"], 1000 / 80, delta=0.3)          # 12.5 ms per token at 80 tok/s
+        for kind in ("copy", "free"):                                          # each kind has its own score
+            self.assertAlmostEqual(out["kind_ms"][kind], 1000 / 80, delta=0.3)
+            self.assertGreater(out["kind_generated"][kind], 0)
         sent = self.fake.requests_to("/v1/chat/completions")[before:]
         self.assertEqual(len(sent), 3)
         for r in sent:

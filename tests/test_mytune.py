@@ -52,6 +52,28 @@ class Candidates(unittest.TestCase):
         self.assertIsNone(mytune.estimate(shapes, 3, 5, None, 50.0))
 
 
+class Combine(unittest.TestCase):
+    @staticmethod
+    def v(verdict, gain):
+        return {"verdict": verdict, "gain": gain, "ci": [-gain - 0.01, -gain + 0.01], "floor": 0.01, "rounds": 6}
+
+    def test_better_in_one_kind_and_worse_in_none_is_better(self):
+        r = mytune._combine({"copy": self.v("better", 0.08), "free": self.v("no change", 0.0)})
+        self.assertEqual(r["verdict"], "better")
+        self.assertAlmostEqual(r["gain"], 0.04)                        # the mean of the two kinds
+
+    def test_worse_in_one_kind_is_worse_even_when_the_other_is_better(self):
+        r = mytune._combine({"copy": self.v("better", 0.08), "free": self.v("worse", -0.06)})
+        self.assertEqual(r["verdict"], "worse")
+
+    def test_no_change_in_both_is_no_change(self):
+        self.assertEqual(mytune._combine({"copy": self.v("no change", 0.0), "free": self.v("no change", 0.01)})["verdict"], "no change")
+
+    def test_too_few_rounds_in_a_kind_is_too_few(self):
+        r = mytune._combine({"copy": self.v("better", 0.1), "free": self.v("not enough rounds", 0.0)})
+        self.assertEqual(r["verdict"], "not enough rounds")
+
+
 class Loop(unittest.TestCase):
     def setUp(self):
         self.tmp = support.tmpdir(self)

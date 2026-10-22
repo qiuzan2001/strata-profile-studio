@@ -105,24 +105,28 @@
     return S.table(cols, rows);
   }
 
+  const kindGain = (a, k) => (a.kinds && a.kinds[k] && isNum(a.kinds[k].gain) ? pc(a.kinds[k].gain) : '–');
+
   function resultBlock(res) {
     const out = [];
     const rows = Object.entries(res.arms || {}).map(([name, a]) => ({
       name, verdict: a.verdict, gain: isNum(a.gain) ? pc(a.gain) : '–',
       ci: a.ci ? `${pc(-a.ci[1])} to ${pc(-a.ci[0])}` : '–',
-      same: a.same_output === null ? 'not checked' : (a.same_output ? 'same' : 'different'), ms: S.num(a.median_ms, 1),
+      copy: kindGain(a, 'copy'), free: kindGain(a, 'free'), same: a.same_output === null ? 'not checked' : (a.same_output ? 'same' : 'different'), ms: S.num(a.median_ms, 1),
     }));
     const cols = [
       { label: 'Setting', key: 'name' },
       { label: 'Result', get: (r) => S.chip(r.verdict, VERDICT_CLS[r.verdict] || '') },
       { label: 'Faster by', key: 'gain', num: true, title: 'The median change over the rounds. Positive: less time for the same work.' },
+      { label: 'Copy replies', key: 'copy', num: true, title: 'The change for the replies that copy text, compared apart' },
+      { label: 'Free replies', key: 'free', num: true, title: 'The change for the replies in free text, compared apart' },
       { label: '95% interval', key: 'ci', num: true },
       { label: 'ms per token', key: 'ms', num: true, title: 'The median time that Strata spent for each generated token, over the 6 turns of one pass. Less is faster.' },
       { label: 'Text', key: 'same', title: 'Is the text of the reply the same as with the current settings?' },
     ];
     out.push(S.table(cols, rows));
     out.push(el('p', { class: 'note', text: `${res.rounds} clean rounds${res.spoiled ? `, ${res.spoiled} dropped` : ''}. `
-      + `The noise of this PC (the median difference between two copies of the current settings): ${S.pct(res.floor, 1)}. A change must be larger than that and larger than 2%.`
+      + `The noise of this PC (the median difference between two copies of the current settings): ${S.pct(res.floor, 1)}. A change must be larger than that and larger than 2%. The replies that copy text and the free replies are compared apart; the first number is the mean of the two.`
       + (res.output_check === 'unreliable' ? ' The text of the two copies of the current settings differed, so the text check was not used.' : '') }));
     if (res.winner) {
       out.push(el('p', { class: 'verdict', text: `Best: ${res.winner.name}, ${S.pct(res.winner.gain, 1)} faster on the standard test.` }));
