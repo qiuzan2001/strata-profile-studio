@@ -7,52 +7,21 @@ from fakestrata import FakeStrata
 from studiolib import replay
 
 
-def req(read, gen, reused=0):
-    return {"prompt_tokens": read + reused, "reused": reused, "read": read, "generated": gen,
-            "read_tokens": read, "prompt_ms": 1.0, "decode_ms": 1.0}
-
-
 class Shapes(unittest.TestCase):
-    def test_no_request_no_shape(self):
-        self.assertEqual(replay.pick_shapes([]), [])
-
-    def test_shapes_spread_over_the_reads_and_are_capped(self):
-        reqs = [req(r, 100) for r in (1000, 2000, 4000, 8000, 80000)]
-        s = replay.pick_shapes(reqs, k=3)                                  # groups: [1000] [2000, 4000] [8000, 80000]
-        self.assertEqual([x["read"] for x in s], [1000, 3000, replay.MAX_READ])
-        self.assertEqual([x["capped"] for x in s], [False, False, True])
-
-    def test_a_shape_takes_the_median_reply_of_its_group_not_one_request_s(self):
-        reqs = [req(1000, g) for g in (10, 20, 900)] + [req(9000, g) for g in (100, 200, 300)]
-        s = replay.pick_shapes(reqs, k=2)
-        self.assertEqual([(x["read"], x["generated"]) for x in s], [(1000, 20), (9000, 200)])
-
-    def test_generated_is_capped(self):
-        s = replay.pick_shapes([req(5000, 5000)], k=1)
-        self.assertEqual(s[0]["generated"], replay.MAX_GENERATED)
-        self.assertTrue(s[0]["capped"])
-
-    def test_k_is_not_more_than_the_requests(self):
-        self.assertEqual(len(replay.pick_shapes([req(1000, 10), req(2000, 10)], k=5)), 2)
-
     def test_seconds_of_the_shapes(self):
         shapes = [{"read": 2000, "generated": 100}, {"read": 1000, "generated": 50}]
         self.assertAlmostEqual(replay.shapes_seconds(shapes, 1000.0, 50.0), 3.0 + 3.0)
         self.assertIsNone(replay.shapes_seconds(shapes, None, 50.0))
 
 
-class FromLog(unittest.TestCase):
-    def test_the_filter_comes_before_the_last_n(self):
-        import tempfile
-        from test_workload import line
-        big = [line(20000, 8000, 800, 4000, 8000)] * 3
-        small = [line(300, 0, 20, 100, 100)] * 50               # newer, short requests (probes) must not push the big ones out
-        with tempfile.NamedTemporaryFile("w", suffix=".log") as f:
-            f.write("\n".join(big + small) + "\n")
-            f.flush()
-            out = replay.from_log(f.name, last=5, min_prompt=2000)
-        self.assertEqual(len(out), 3)
-        self.assertEqual(out[0]["read_tokens"], 12000)
+class Standard(unittest.TestCase):
+    def test_three_fixed_shapes_and_a_copy_each_time(self):
+        a, b = replay.standard_shapes(), replay.standard_shapes()
+        self.assertEqual(a, b)
+        self.assertEqual([s["read"] for s in a], [2000, 8000, 16000])
+        self.assertEqual({s["generated"] for s in a}, {256})
+        a[0]["read"] = 1                                          # a caller cannot change the standard
+        self.assertEqual(replay.standard_shapes()[0]["read"], 2000)
 
 
 class Filler(unittest.TestCase):

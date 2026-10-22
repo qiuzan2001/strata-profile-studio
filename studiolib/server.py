@@ -511,7 +511,7 @@ def make_handler(app: StudioApp):
             if path == "/api/mytune/plan":
                 if app.mytune is None:
                     return self._error(404, "Not found.")
-                opts = {k: (query.get(k) or [None])[0] for k in ("rounds", "last", "min_prompt")}
+                opts = {k: (query.get(k) or [None])[0] for k in ("rounds",)}
                 opts["quick"] = (query.get("quick") or ["0"])[0] == "1"
                 try:
                     return self._json(200, app.mytune.plan({k: v for k, v in opts.items() if v not in (None, "")}))
@@ -615,7 +615,7 @@ def make_handler(app: StudioApp):
                 return self._error(400, "The tune sends requests to Strata and may write its config. It needs \"confirm\": true.")
             if app.flow.running() or (app.defaults_run is not None and app.defaults_run.state == "running"):
                 return self._error(409, "A profile run or a tune is going.")
-            opts = {k: body[k] for k in ("rounds", "last", "min_prompt", "shapes", "quick", "apply",
+            opts = {k: body[k] for k in ("rounds", "quick", "apply",
                                          "apply_without_restart", "rollback") if k in body}
             try:
                 app.mytune.start(opts)
@@ -627,7 +627,7 @@ def make_handler(app: StudioApp):
 
         def _api_post(self, path: str, body: dict):
             if path in ("/api/tune-flow", "/api/run-profile") and app.mytune and app.mytune.running():
-                return self._error(409, "A tune for your workload is running. It needs Strata to itself.")
+                return self._error(409, "A tune with the standard test is running. It needs Strata to itself.")
             if path == "/api/run-profile":
                 return self._run_profile(body)
             if path == "/api/tune-flow":
@@ -656,7 +656,7 @@ def make_handler(app: StudioApp):
             if path == "/api/mytune/cancel":
                 if app.mytune and app.mytune.cancel():
                     return self._json(200, {"ok": True})
-                return self._error(409, "No tune for your workload is running.")
+                return self._error(409, "No tune with the standard test is running.")
             if path == "/api/notes":
                 return self._notes(body)
             if path == "/api/settings/apply":

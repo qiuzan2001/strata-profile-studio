@@ -189,7 +189,7 @@ def demo_check(browser, out):
         errs = []
         page.on("pageerror", lambda e: errs.append(str(e)))
         page.on("console", lambda m: errs.append(m.text) if m.type == "error" else None)
-        expect = {"now": "Limiting component", "runs": "run 7", "compare": "baseline", "tune": "Your workload", "tune/pc": "Tune history",
+        expect = {"now": "Limiting component", "runs": "run 7", "compare": "baseline", "tune": "Tune with the standard test", "tune/pc": "Tune history",
                   "settings": "--pcie-frac"}
         for view, words in expect.items():
             page.goto(f"{base}/#{view}")

@@ -1,7 +1,7 @@
-"""Tune for my workload: the closed loop.
+"""The tune with the standard test: the closed loop.
 
   quiet      nobody else uses Strata (the engine log shows no request for a while)
-  analyse    the shapes of the user's requests, from the engine log
+  analyse    the standard test: 3 fixed requests (replay.STANDARD_SHAPES), the same on every PC and in every run
   measure    interleaved rounds (studiolib/abtest.py): the current settings twice (the noise of this PC) and each
              candidate once, per round, in a random order. The replay (studiolib/replay.py) is the work.
   apply      the winner goes into the run config, after a copy of the file
@@ -99,19 +99,19 @@ class MyTune:
     def plan(self, opts: dict | None = None) -> dict:
         """What a run would do and how long it takes (an estimate from the log's own speeds), without a request."""
         opts = opts or {}
-        shapes, summary, why = self._shapes(opts)
+        shapes = replay.standard_shapes()
         cur = self._current()
         arms = candidates(cur, bool(opts.get("quick")))
         rounds = max(abtest.MIN_ROUNDS, int(opts.get("rounds") or DEFAULT_ROUNDS))
-        sec = estimate(shapes, len(arms), rounds, (summary or {}).get("prompt_tok_s"), (summary or {}).get("decode_tok_s"))
+        sec = estimate(shapes, len(arms), rounds, *self._speeds())
         return {"shapes": shapes, "arms": list(arms), "rounds": rounds, "seconds": sec, "current": cur,
-                "note": why, "restart_command": bool(self.restart_cmd),
+                "note": replay.STANDARD_NOTE, "restart_command": bool(self.restart_cmd),
                 "config_readable": bool(read_config(self.config_path)[0])}
 
     def start(self, opts: dict | None = None) -> None:
         opts = dict(opts or {})
         if self.running():
-            raise TuneError(409, "A tune for your workload is already running.")
+            raise TuneError(409, "A tune is already running.")
         if not self.config_path or read_config(self.config_path)[0] is None:
             raise TuneError(409, "The Studio cannot read Strata's run config, so it cannot write the result. Start it with --config.")
         auto_apply = bool(opts.get("apply"))
@@ -186,18 +186,16 @@ class MyTune:
         except OSError:
             return None
 
-    def _shapes(self, opts: dict):
-        """(shapes, the summary of the log or None, a note)."""
+    def _speeds(self) -> tuple[float | None, float | None]:
+        """The prompt and the reply speed (tok/s) that this PC showed in its engine log, for the time estimate only."""
         if not self.engine_log:
-            return [], None, "The Studio does not know Strata's engine log, so it cannot read your requests. Start it with --engine-log or --config."
+            return None, None
         try:
-            reqs = replay.from_log(self.engine_log, int(opts.get("last") or 100), int(opts.get("min_prompt") or 2000))
+            reqs = [r for r in workload.requests_of(workload.tail_lines(self.engine_log)) if r["prompt_tokens"] >= 2000][-100:]
         except OSError:
-            return [], None, "The engine log cannot be read."
-        if not reqs:
-            return [], None, "The engine log holds no request of 2,000 prompt tokens or more. Use Strata for a while, then run the tune."
-        summary = workload.summarize(reqs)
-        return replay.pick_shapes(reqs, int(opts.get("shapes") or 3)), summary, f"{len(reqs)} requests of your log."
+            return None, None
+        m = workload.summarize(reqs)
+        return (m["prompt_tok_s"], m["decode_tok_s"]) if m else (None, None)
 
     # ---------------------------------------------------------------------------------- measure rounds
     def _measure(self, shapes, sizer, arms: dict[str, dict], rounds: int, seed: int, label: str) -> dict:
@@ -304,10 +302,8 @@ class MyTune:
         self._stage("quiet", "done")
         # ------------------------------------------------------------------ analyse
         self._stage("analyse", "running", "Reading the shape of the requests.")
-        shapes, _summary, note = self._shapes(opts)
-        if not shapes:
-            raise _Stop("failed", note)
-        self._log(note)
+        shapes = replay.standard_shapes()
+        self._log(replay.STANDARD_NOTE)
         cur = self._current()
         arms = candidates(cur, bool(opts.get("quick")))
         if not arms:
@@ -367,7 +363,7 @@ class MyTune:
         if not opts.get("apply"):
             for k in ("apply", "restart", "verify"):
                 self._stage(k, "skipped")
-            self._finish("done", f"{name} is {arm['gain'] * 100:.1f}% faster for this workload. Nothing was written: "
+            self._finish("done", f"{name} is {arm['gain'] * 100:.1f}% faster on the standard test. Nothing was written: "
                                  "tick \"Write the result\" to apply it.", result)
             return
         self._stage("apply", "running", "Writing the config.")

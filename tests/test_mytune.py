@@ -8,12 +8,19 @@ from pathlib import Path
 import support
 from fakestrata import FakeStrata
 from studiolib import mytune, replay
-from test_workload import line
+from test_workload import AGENT, line
 
 CONFIG = {"exe": "engine/strata", "args": ["--native", "x.gguf", "--pcie-frac", "0.55", "--spec-min-p", "0.5",
                                               "--spec", "3", "--prefill", "2048"]}
 OPTS = {"rounds": 5}
-SMALL = [line(3000, 1000, 60, 1000, 800), line(3500, 1000, 80, 1200, 900), line(4000, 1500, 100, 1300, 1000)]   # small shapes keep the tests fast
+REAL_SHAPES = replay.STANDARD_SHAPES
+FAST_SHAPES = ({"read": 1500, "generated": 60, "capped": False}, {"read": 3000, "generated": 80, "capped": False})
+
+
+def use_fast_shapes(test):
+    """The loop tests replay small shapes. test_the_standard_shapes_are_the_real_ones checks the real constants."""
+    replay.STANDARD_SHAPES = FAST_SHAPES
+    test.addCleanup(setattr, replay, "STANDARD_SHAPES", REAL_SHAPES)
 OK_CMD = [sys.executable, "-c", "pass"]
 
 
@@ -53,7 +60,8 @@ class Loop(unittest.TestCase):
         self.config = self.tmp / "run.json"
         self.config.write_text(json.dumps(CONFIG, indent=2))
         self.log = self.tmp / "e.log"
-        self.log.write_text("\n".join(SMALL) + "\n")                  # the shapes of the tune come from the log
+        self.log.write_text("\n".join(AGENT * 3) + "\n")                # the log gives the speeds for the time estimate only
+        use_fast_shapes(self)
         self.client = replay.Client(self.fake.url, timeout=10)
 
     def tune(self, **kw):
@@ -235,21 +243,31 @@ class Loop(unittest.TestCase):
             mt.cancel_event.set()
             wait_done(mt)
 
-    def test_without_requests_in_the_log_there_is_no_shape_and_the_run_fails(self):
-        self.log.write_text("nothing here\n")
-        mt = self.tune()
-        p = mt.plan({})
-        self.assertEqual(p["shapes"], [])
-        self.assertIn("no request of 2,000 prompt tokens", p["note"])
-        mt.start(OPTS)
-        st = wait_done(mt)
-        self.assertEqual(st["state"], "failed")
-        self.assertEqual(self.fake.requests_to("/v1/chat/completions"), [])
+    def test_the_standard_shapes_are_the_real_ones(self):
+        self.assertEqual([(s["read"], s["generated"]) for s in REAL_SHAPES], [(2000, 256), (8000, 256), (16000, 256)])
 
-    def test_without_an_engine_log_the_plan_says_so(self):
+    def test_the_plan_needs_no_log_and_gives_no_estimate_without_one(self):
         p = self.tune(engine_log=None).plan({})
-        self.assertEqual(p["shapes"], [])
-        self.assertIn("--engine-log", p["note"])
+        self.assertEqual(p["shapes"], replay.standard_shapes())
+        self.assertIn("same on every PC", p["note"])
+        self.assertIsNone(p["seconds"])                               # no log, no speeds, no estimate
+
+    def test_the_plan_estimates_the_time_from_the_speeds_in_the_log(self):
+        self.assertGreater(self.tune().plan({})["seconds"], 0)
+
+    def test_the_shapes_do_not_depend_on_the_log(self):
+        a = self.tune().plan({})["shapes"]
+        self.log.write_text("nothing here\n")
+        self.assertEqual(self.tune().plan({})["shapes"], a)
+
+    def test_a_run_works_without_a_log(self):
+        self.fake.chat_speeds = lambda t: (4000.0, 100.0 if t.get("pcie_frac") == 0.35 else 80.0)
+        mt = self.tune(engine_log=None)
+        mt.start({"quick": True, "rounds": 5})
+        st = wait_done(mt, 120)
+        self.assertEqual(st["state"], "done", st["message"])
+        self.assertEqual([s["read"] for s in st["result"]["shapes"]], [1500, 3000])
+        self.assertEqual(st["result"]["winner"]["tune"], {"pcie_frac": 0.35})
 
     def test_the_plan_names_arms_rounds_and_current_values(self):
         p = self.tune().plan({})
@@ -258,15 +276,6 @@ class Loop(unittest.TestCase):
         self.assertEqual(len(p["arms"]), 5)
         self.assertTrue(p["config_readable"])
         self.assertFalse(p["restart_command"])
-
-    def test_the_plan_from_the_log_uses_its_requests(self):
-        from test_workload import line
-        log = self.tmp / "e.log"
-        log.write_text("\n".join(SMALL) + "\n")
-        p = self.tune(engine_log=str(log)).plan({})
-        self.assertGreaterEqual(len(p["shapes"]), 1)
-        self.assertIn("requests of your log", p["note"])
-        self.assertGreater(p["seconds"], 0)
 
 
 class Route(unittest.TestCase):
@@ -277,7 +286,8 @@ class Route(unittest.TestCase):
         self.addCleanup(self.fake.stop)
         self.config = self.tmp / "run.json"
         self.config.write_text(json.dumps(CONFIG, indent=2))
-        (self.tmp / "e.log").write_text("\n".join(SMALL) + "\n")
+        (self.tmp / "e.log").write_text("\n".join(AGENT * 3) + "\n")
+        use_fast_shapes(self)
 
     def studio(self, **kw):
         import studio
@@ -325,7 +335,7 @@ class Route(unittest.TestCase):
         try:
             st, _, doc = support.request(s, "POST", "/api/run-profile", {})
             self.assertEqual(st, 409)
-            self.assertIn("workload", doc["error"]["message"])
+            self.assertIn("standard test", doc["error"]["message"])
         finally:
             gate.set()
             s.app.mytune.cancel()

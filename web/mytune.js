@@ -1,5 +1,5 @@
-/* Strata Profile Studio: Tune for my workload.  One card in the Workload view.
-   The Studio replays the size of the user's requests with each candidate setting, in turns, and keeps a change only
+/* Strata Profile Studio: the tune with the standard test.  One card in the Standard test pane of the Tune view.
+   The Studio replays 3 fixed requests with each candidate setting, in turns, and keeps a change only
    when the change is larger than the noise of this PC.  Only settings that do not change the answers are tried.
    The settings that change the answers are in Settings. */
 'use strict';
@@ -46,7 +46,7 @@
     const mins = plan && plan.seconds ? `about ${minutes(plan.seconds)}` : 'some minutes';
     const writes = form.apply;
     const ok = await S.confirm({
-      title: 'Start the tune for your workload?',
+      title: 'Start the tune with the standard test?',
       points: [
         `It sends test requests to Strata for ${mins}. Strata answers other clients slowly or not at all in that time.`,
         'Nobody else should use Strata while it runs. A round in which another request arrives is dropped.',
@@ -126,7 +126,7 @@
       + `The noise of this PC (two copies of the current settings): ${S.pct(res.floor, 1)}. A change must be larger than that and larger than 2%.`
       + (res.output_check === 'unreliable' ? ' The text of the two copies of the current settings differed, so the text check was not used.' : '') }));
     if (res.winner) {
-      out.push(el('p', { class: 'verdict', text: `Best: ${res.winner.name}, ${S.pct(res.winner.gain, 1)} faster for this workload.` }));
+      out.push(el('p', { class: 'verdict', text: `Best: ${res.winner.name}, ${S.pct(res.winner.gain, 1)} faster on the standard test.` }));
     }
     if (res.applied) {
       out.push(el('p', { class: 'note', text: `Written to the config. The copy of the old file: ${res.applied.backup}` }));
@@ -167,7 +167,7 @@
       host = el('div', { class: 'mytune' });
       if (!snap) loadState(A);
       loadPlan(A);
-      const card = S.card({ q: 'Tune for my workload', sub: 'Replays the size of your requests with each setting, in turns, and keeps a change only when it is larger than the noise of this PC.' }, host);
+      const card = S.card({ q: 'Tune with the standard test', sub: 'Replays 3 fixed requests with each setting, in turns, and keeps a change only when it is larger than the noise of this PC.' }, host);
       S.fill(host, ...body(A));
       return card;
     },

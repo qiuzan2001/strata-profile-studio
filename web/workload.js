@@ -1,5 +1,5 @@
 /* Strata Profile Studio: the workload pane of the Tune view.  What the requests of this PC look like (read from the
-   engine log) and ideas for them.  The tune card (mytune.js) sits in the same pane.  The counts only read: they write
+   engine log) and ideas for them.  The counts only read: they write
    no file. */
 'use strict';
 
@@ -34,7 +34,7 @@
   }
 
   function controls(A) {
-    return el('div', { class: 'view-head' }, el('h3', { text: 'Your workload' }),
+    return el('div', { class: 'view-head' }, el('h3', { text: 'Your requests' }),
       S.seg([[50, 'Last 50'], [100, 'Last 100'], [300, 'Last 300']], opts.last, (v) => { opts.last = v; load(A); }, 'Number of requests'),
       S.seg([[0, 'All requests'], [2000, 'Prompts of 2,000 tokens or more']], opts.minPrompt, (v) => { opts.minPrompt = v; load(A); }, 'Which requests'),
       S.button('Refresh', () => load(A), 'small'));
@@ -77,9 +77,9 @@
     } else if (!doc) {
       body.push(el('p', { class: 'note', text: 'Reading the engine log…' }));
     } else if (!doc.mine) {
-      body.push(el('p', { class: 'note', text: doc.note || 'No request is available.' }), S.mytune.card(A));
+      body.push(el('p', { class: 'note', text: doc.note || 'No request is available.' }));
     } else {
-      body.push(tiles(doc.mine), timeCard(doc.mine), S.mytune.card(A), leverCard(doc));
+      body.push(tiles(doc.mine), timeCard(doc.mine), leverCard(doc));
       body.push(el('p', { class: 'note', text: `The log holds ${S.int(doc.found)} requests in its last 8 MiB. The log may include requests from the profile and the tune.` }));
     }
     S.fill(host, ...body);

@@ -1,10 +1,9 @@
-"""Replay the shape of the user's requests against Strata, one arm (one set of per-request settings) at a time.
+"""The standard test: the same requests on every PC and in every run, one arm (one set of per-request settings) at a time.
 
-The shape is what the engine log holds: the tokens read, the tokens generated. The replay builds a prompt of that
-many tokens from plain filler text and asks the model to copy a passage, so the reply has the length of the logged
-reply. The text is not the user's text. The Studio never reads or sends the content of the user's prompts. What the
-replay keeps from the user's traffic is the size of the work, not its content. How well the drafts of the engine
-(suffix draft, MTP) work on the user's own text is therefore not measured here.
+A request is a shape: the tokens read and the tokens generated. The test builds a prompt of that many tokens from plain
+filler text and asks the model to copy a passage, so the reply has the planned length. The text is not the user's text.
+The Studio never reads or sends the content of the user's prompts. How well the drafts of the engine (suffix draft,
+MTP) work on the user's own text is therefore not measured here.
 
 Every prompt starts with a salt, so the engine finds no reused prefix: the replay reads every token new.
 The request is greedy (temperature 0) and sets `strata_checkpoint: false`, so the replay leaves no checkpoint.
@@ -13,19 +12,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-import statistics
 import time
 import urllib.error
 import urllib.request
-
-from . import workload
 
 WORDS = ("table river window garden pencil engine bridge candle forest mirror ladder summer winter planet silver "
          "button harbor kitchen letter market number orange paper quiet rocket school shadow thunder valley yellow "
          "anchor blanket copper dragon feather glacier hammer island jungle kettle lantern meadow needle oyster").split()
 PASSAGE_HEAD = "Copy the following passage word for word. Then stop.\n\n"
-MAX_READ = 30000                                        # a replayed request reads at most this many new tokens
-MAX_GENERATED = 400                                     # and generates at most this many
 OVERHEAD_WORDS = 800                                    # the length of the probe that finds the tokens per word
 
 
@@ -43,30 +37,19 @@ def filler(words: int, salt: str) -> str:
     return " ".join(out)
 
 
-def pick_shapes(reqs: list[dict], k: int = 3, max_read: int = MAX_READ, max_generated: int = MAX_GENERATED) -> list[dict]:
-    """k shapes from the logged requests: the median read and the median reply of each k-th of them, ordered by the number of tokens read. A shape is
-    {"read": tokens, "generated": tokens}. Both are capped, and `capped` says so."""
-    rows = []
-    for r in reqs:
-        read = r.get("read_tokens")
-        gen = r.get("generated")
-        if not isinstance(read, int) or not isinstance(gen, int) or read < 1 or gen < 1:
-            continue
-        rows.append((read, gen))
-    if not rows:
-        return []
-    rows.sort()
-    k = max(1, min(k, len(rows)))
-    cuts = [int(i * len(rows) / k) for i in range(k + 1)]
-    picks = []
-    for lo, hi in zip(cuts, cuts[1:]):                  # each k-th of the requests gives one shape: the medians of its group
-        group = rows[lo:hi]
-        picks.append((int(statistics.median(r for r, _ in group)), int(statistics.median(g for _, g in group))))
-    out = []
-    for read, gen in picks:
-        out.append({"read": min(read, max_read), "generated": min(gen, max_generated),
-                    "capped": read > max_read or gen > max_generated})
-    return out
+# The standard test: the same three requests on every PC and in every run, so that two tunes can be compared. It is a
+# benchmark, not a claim about the user's traffic: a short, a medium and a long context, each with a reply of 256 tokens.
+STANDARD_SHAPES = (
+    {"read": 2000, "generated": 256, "capped": False},
+    {"read": 8000, "generated": 256, "capped": False},
+    {"read": 16000, "generated": 256, "capped": False},
+)
+STANDARD_NOTE = ("The standard test: 3 fixed requests (2,000, 8,000 and 16,000 new tokens read, 256 tokens of reply). "
+                 "It is the same on every PC and in every run, so two tunes can be compared.")
+
+
+def standard_shapes() -> list[dict]:
+    return [dict(s) for s in STANDARD_SHAPES]
 
 
 def shapes_seconds(shapes: list[dict], prompt_tok_s: float | None, decode_tok_s: float | None) -> float | None:
@@ -205,9 +188,3 @@ def one_pass(client: Client, shapes: list[dict], sizer: Sizer, tune: dict | None
             "decode_tok_s": (gen / decode_ms * 1000) if decode_ms else None,
             "drafts_accepted": (accepted / drafts) if drafts else None,
             "hash": h.hexdigest(), "error": errors[0] if errors else None}
-
-
-def from_log(path, last: int = 100, min_prompt: int = 2000) -> list[dict]:
-    """The logged requests that the shapes come from, with `read_tokens` (new tokens, not reused)."""
-    reqs = [r for r in workload.requests_of(workload.tail_lines(path)) if r.get("prompt_tokens", 0) >= min_prompt][-last:]
-    return [{**r, "read_tokens": r["read"]} for r in reqs]

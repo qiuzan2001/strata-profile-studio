@@ -138,8 +138,8 @@ The screenshots show the real data of one PC (RTX 5070 Ti 16 GB, Ryzen 7 5800X3D
 
 ![Tune](docs/screenshots/tune.png)
 
-The Tune view has two panes. The switch at the top moves between them: **My workload** (`#tune`) and **This PC**
-(`#tune/pc`). The old `#workload` address opens My workload. Compare stays a view of its own, for any two or more runs.
+The Tune view has two panes. The switch at the top moves between them: **Standard test** (`#tune`) and **This PC**
+(`#tune/pc`). The old `#workload` address opens the Standard test. Compare stays a view of its own, for any two or more runs.
 
 **This PC** (calibration):
 
@@ -147,25 +147,20 @@ The Tune view has two panes. The switch at the top moves between them: **My work
 - What the calibration measured, round by round, and which value it kept.
 - Whether the tune helped the requests that you send, not only the calibration's own test.
 
-### Tune: My workload
+### Tune: Standard test
 
-- What the requests of this PC look like: the prompt length, the reused share of the prompt, the reply length, the
-  speeds, and how the time splits between the prompt read and the reply.
-- The Studio reads the engine log. It reads no prompt text. Choose how many requests to count. A filter removes the
-  short requests of the profile and the tune.
-- A short list of ideas for your workload. Each idea says what it is based on. None of them is a measured gain.
-- This part of the view only reads. The tune card below it sends requests (see the next section).
+The first pane of the Tune view. It holds the tune with the standard test, and under it a read-only look at your requests.
 
-### Tune for my workload
-
-A tune that measures your workload, not a fixed prompt. It is a card in the My workload pane of the Tune view.
+**Tune with the standard test.** A tune that measures whole requests (a read of many tokens, then a reply), not one
+short prompt, and keeps a change only when it beats the noise of this PC.
 
 1. **Quiet check.** It waits until the engine log shows no request for 90 s. If another client keeps using Strata, it
    stops and says so.
-2. **Shapes.** It sorts the requests of your log by the number of new tokens read, splits them in three groups, and takes the median read and the median reply of each group. It needs requests of 2,000 prompt tokens or more in the log. There is no preset: the Studio does not invent a workload. It builds
-   test prompts of the same size from plain filler text and asks the model to copy a passage, so the reply has the
-   logged length. **The text is not yours.** The Studio never sends your prompts. The size of the work is real. How well
-   drafts work on your own text is not measured.
+2. **The standard test.** 3 fixed requests: 2,000, 8,000 and 16,000 new tokens read, each with 256 tokens of reply.
+   They are the same on every PC and in every run, so two tunes can be compared. They are a benchmark, not a claim
+   about your traffic: the Studio does not guess your workload, and it has no scenario presets. It builds the prompts
+   from plain filler text and asks the model to copy a passage, so the reply has the planned length. **The text is not
+   yours.** The Studio never sends your prompts. How well drafts work on your own text is not measured.
 3. **Only settings that do not change the answer.** The per-request keys `pcie_frac` and `spec_min_p`. The engine
    verifies every draft and expert placement does not choose the token. The Studio still compares the reply text of
    each try with the reply text of the current settings. A try with another text is never applied. Settings that
@@ -181,6 +176,11 @@ A tune that measures your workload, not a fixed prompt. It is a card in the My w
 
 A tune sends requests to Strata for some minutes. The card shows the estimate before you start. `POST /api/mytune`
 needs `"confirm": true`; `GET /api/mytune/plan` and `GET /api/mytune` read.
+
+**Your requests** (read only, under the tune card): the prompt length, the reused share of the prompt, the reply length,
+the speeds, and how the time splits between the prompt read and the reply, counted from the engine log. The Studio reads
+no prompt text. A short list of ideas follows. Each idea says what it is based on. None of them is a measured gain.
+`GET /api/workload?last=N&min_prompt=N` gives the same counts. The time estimate of the tune uses the speeds in this log.
 
 ### Settings
 

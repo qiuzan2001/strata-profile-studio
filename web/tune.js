@@ -362,7 +362,7 @@
     const sec = document.getElementById('view-tune');
     // #tune is the workload pane; #tune/pc and #tune/<id> are the calibration of this PC
     const pane = route.parts[1] === undefined ? 'workload' : 'pc';
-    const paneSeg = () => S.seg([['workload', 'My workload'], ['pc', 'This PC (calibration)']], pane,
+    const paneSeg = () => S.seg([['workload', 'Standard test'], ['pc', 'This PC (calibration)']], pane,
       (v) => S.go(v === 'workload' ? '#tune' : '#tune/pc'), 'What to tune for');
     if (pane === 'workload') {
       live.steps = null; builtKey = null;                              // the calibration nodes are gone: tick does nothing
@@ -372,8 +372,8 @@
       const host = el('div', { class: 'workload-host' });
       const running = (A.flow && A.flow.state === 'running') || (A.strata().tune && A.strata().tune.state === 'running');
       S.fill(sec, el('div', { class: 'view-head' }, el('h2', { text: 'Tune' }), paneSeg(),
-        el('span', { class: 'muted', text: 'replay your own requests with each setting, and keep only a change that beats the noise of this PC' })),
-        running ? el('p', { class: 'note', text: 'A calibration of this PC is running. Open "This PC" to follow it.' }) : null, host);
+        el('span', { class: 'muted', text: 'replay 3 fixed requests with each setting, and keep only a change that beats the noise of this PC' })),
+        running ? el('p', { class: 'note', text: 'A calibration of this PC is running. Open "This PC" to follow it.' }) : null, S.mytune.card(A), host);
       S.workload.mount(A, host);
       return;
     }
