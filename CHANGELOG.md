@@ -8,6 +8,13 @@ One PC measured the numbers below: RTX 5070 Ti 16 GB, Ryzen 7 5800X3D, Swift 1.5
   reply length, speeds, the split of the time). It compares them with five scenario presets and names the closest one.
   The shapes of the presets are assumed, not measured. `GET /api/workload?last=N&min_prompt=N` gives the same data.
   The view only reads.
+- **Tune for my workload:** a card in the Workload view. It replays the size of your logged requests (or a preset) with
+  each candidate of `pcie_frac` and `spec_min_p`, in interleaved rounds with an A/A noise floor and a paired bootstrap
+  (at least 5 rounds). It checks that the reply text stays the same, waits for a quiet Strata, drops spoiled rounds, and
+  can write the winner (after a dated copy), restart Strata (`--restart-cmd`), verify, and roll back. Only settings that
+  do not change the answers are tuned.
+- **Settings:** new rows for `--suffix-draft`, `--lookup-chain`, `reasoning_budget_tokens` and `STRATA_ROUTE_TAIL_SKIP`,
+  each marked "changes the answers" or "same answers". The two that change answers are never tuned by the Studio.
 
 ## 0.1.2 (2026-10-16)
 

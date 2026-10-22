@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shlex
 import sys
 import threading
 import time
@@ -86,7 +87,7 @@ class Studio:
                  config: str | None = None, state_path: str | None = None, timing: Timing | None = None,
                  allow_hosts=(), engine_log: str | None = None, read_only: bool = False, host_monitor=None,
                  defaults_tool=None, host_info: bool = True, strata_root: str | None = None, stock_popen=None,
-                 cards_repo: str | None = None, share_off: str | None = None):
+                 cards_repo: str | None = None, share_off: str | None = None, restart_cmd=None):
         if not is_loopback(host) and not key:
             raise SystemExit("Refusing to listen on a non-loopback address without a key: add --key KEY "
                              "(or STRATA_KEY=KEY). The same key protects the Studio and is sent to Strata.")
@@ -112,6 +113,10 @@ class Studio:
                                   engine_log=engine_log or default_engine_log(config), explicit_root=strata_root,
                                   key=key, **stock_kw)
         self.poller.stock_backend = self.stock
+        from studiolib import replay
+        from studiolib.mytune import MyTune
+        self.mytune = MyTune(replay.Client(strata, key), engine_log or default_engine_log(config), config,
+                             restart_cmd=restart_cmd)
         self.app = StudioApp(strata_url=public_url(strata), results_dir=self.results, config_path=config, key=key,
                              studio_key=studio_key, host=host, port=port, client=self.client, poller=self.poller,
                              flow=self.flow, reports=self.reports, state=self.state, web_dir=ROOT / "web",
@@ -120,7 +125,7 @@ class Studio:
                              host_monitor=host_monitor or HostMonitor(enabled=host_info), profiles=Profiles(config) if config else None,
                              defaults_run=DefaultsRun(self.client, self.poller, self.results, config, key,
                                                       tool=defaults_tool) if config else None,
-                             stock=self.stock, cards_repo=cards_repo, share_off=share_off)
+                             stock=self.stock, cards_repo=cards_repo, share_off=share_off, mytune=self.mytune)
         try:
             self.server = StudioServer(host, port, make_handler(self.app))
         except OSError as e:
@@ -197,6 +202,10 @@ def parse_args(argv=None):
     ap.add_argument("--engine-log", default=None,
                     help="Strata's engine log, read only (default: the config's \"log\" key, or strata-<model>.log "
                          "next to it): the PC diagram's PCIe link ceiling")
+    ap.add_argument("--restart-cmd", default=None, metavar="COMMAND",
+                    help="the command that restarts Strata, for \"Tune for my workload\" (split into words, no shell; "
+                         "for example: systemctl --user restart strata). Without it the Studio writes the config only "
+                         "when asked to, and cannot check the result after a restart.")
     ap.add_argument("--state", default=None, help="the state file (default studio-state.json next to studio.py)")
     ap.add_argument("--card", metavar="REPORT",
                     help="write a result card of one profile report (its folder or its results.json): card.html, "
@@ -352,7 +361,8 @@ def main(argv=None) -> int:
     key = a.key or os.environ.get("STRATA_KEY") or None
     studio = Studio(a.strata, a.results, key=key, host=a.host, port=a.port, config=a.config, state_path=a.state,
                     allow_hosts=a.allow_host, engine_log=a.engine_log, read_only=a.read_only,
-                    host_info=a.host_info == "on", strata_root=a.strata_root, cards_repo=a.cards_repo)
+                    host_info=a.host_info == "on", strata_root=a.strata_root, cards_repo=a.cards_repo,
+                    restart_cmd=shlex.split(a.restart_cmd) if a.restart_cmd else None)
     shown = "[" + a.host + "]" if ":" in a.host else a.host
     print(f"Strata Profile Studio on http://{shown}:{studio.port}/ (Strata: {studio.app.strata_url}, "
           f"reports: {studio.results})", flush=True)

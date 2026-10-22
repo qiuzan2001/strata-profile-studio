@@ -679,3 +679,8 @@ dialog.share { width: min(1100px, calc(100vw - 32px)); max-width: none; }
 tr.mine td { font-weight: 600; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .split span { color: #111110; } }
 :root[data-theme="dark"] .split span { color: #111110; }
+.chip.good { border-color: var(--good); color: var(--good); }
+.chip.bad { border-color: var(--bad); color: var(--bad); }
+.note.warn { color: var(--warn); }
+.mytune h4 { margin: 16px 0 4px; font-size: 13.5px; }
+.mytune .view-head { margin: 4px 0 8px; }

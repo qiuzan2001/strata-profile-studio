@@ -15,6 +15,7 @@ from pathlib import Path
 
 from . import __version__, calibparse, cardmake, compare as compare_mod, configwrite, settings as settings_mod, workload
 from .flow import FlowError
+from .mytune import TuneError
 from .poller import MSG_KEY, MSG_PROFILE_OFF
 from .reports import REPORT_ID_RE, ReportError
 from .state import NOTE_CHARS
@@ -23,7 +24,7 @@ from .strata import StrataError
 MAX_POST = 64 * 1024
 STATIC = {name: "text/javascript; charset=utf-8" for name in
           ("lib.js", "charts.js", "diagram.js", "panel.js", "now.js", "runs.js", "compare.js", "expertmap.js", "tune.js",
-           "settings.js", "workload.js", "share.js", "app.js",
+           "settings.js", "mytune.js", "workload.js", "share.js", "app.js",
            "vendor/chart-4.4.1.umd.js")}
 STATIC.update({"style.css": "text/css; charset=utf-8", "favicon.svg": "image/svg+xml"})
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "
@@ -41,7 +42,7 @@ class StudioApp:
 
     def __init__(self, *, strata_url, results_dir, config_path, key, studio_key, host, port, client, poller,
                  flow, reports, state, web_dir, started_at, allow_hosts=(), engine_log=None, read_only=False, host_monitor=None, profiles=None,
-                 defaults_run=None, stock=None, cards_repo=None, share_off=None):
+                 defaults_run=None, stock=None, cards_repo=None, share_off=None, mytune=None):
         self.strata_url, self.results_dir, self.config_path = strata_url, results_dir, config_path
         self.key_set = bool(key)
         self.studio_key = studio_key                   # None: no bearer needed on /api/
@@ -57,6 +58,7 @@ class StudioApp:
         from .share import CARDS_REPO, GhShare
         self.cards_repo = cards_repo or CARDS_REPO      # the cards site's repository (--cards-repo)
         self.gh_share = GhShare(self.cards_repo)
+        self.mytune = mytune                           # studiolib.mytune.MyTune: the tune for the user's workload
         self.share_off = share_off                     # why the card cannot leave this Studio (the demo), or None
         self.stock = stock                             # studiolib.stock.StockBackend: a Strata without /profile routes
 
@@ -504,6 +506,17 @@ def make_handler(app: StudioApp):
                     return self._error(400, "Give last and min_prompt as whole numbers.")
                 log = app.engine_log.path if app.engine_log else None
                 return self._json(200, workload.document(log, last, min_prompt))
+            if path == "/api/mytune":
+                return self._json(200, app.mytune.snapshot() if app.mytune else {"state": "idle"})
+            if path == "/api/mytune/plan":
+                if app.mytune is None:
+                    return self._error(404, "Not found.")
+                opts = {k: (query.get(k) or [None])[0] for k in ("preset", "rounds", "last", "min_prompt")}
+                opts["quick"] = (query.get("quick") or ["0"])[0] == "1"
+                try:
+                    return self._json(200, app.mytune.plan({k: v for k, v in opts.items() if v not in (None, "")}))
+                except (TuneError, ValueError) as e:
+                    return self._error(400, getattr(e, "message", str(e)))
             if path == "/api/hardware":
                 return self._json(200, app.hardware_doc())
             if path == "/api/host":
@@ -595,7 +608,26 @@ def make_handler(app: StudioApp):
                 return None, "long must be empty or a whole number of tokens."
             return v, None
 
+        def _mytune_start(self, body: dict):
+            if app.mytune is None:
+                return self._error(404, "Not found.")
+            if body.get("confirm") is not True:
+                return self._error(400, "The tune sends requests to Strata and may write its config. It needs \"confirm\": true.")
+            if app.flow.running() or (app.defaults_run is not None and app.defaults_run.state == "running"):
+                return self._error(409, "A profile run or a tune is going.")
+            opts = {k: body[k] for k in ("preset", "rounds", "last", "min_prompt", "shapes", "quick", "apply",
+                                         "apply_without_restart", "rollback") if k in body}
+            try:
+                app.mytune.start(opts)
+            except TuneError as e:
+                return self._error(e.status, e.message)
+            except (TypeError, ValueError):
+                return self._error(400, "Give rounds, last, min_prompt and shapes as whole numbers.")
+            return self._json(200, {"ok": True})
+
         def _api_post(self, path: str, body: dict):
+            if path in ("/api/tune-flow", "/api/run-profile") and app.mytune and app.mytune.running():
+                return self._error(409, "A tune for your workload is running. It needs Strata to itself.")
             if path == "/api/run-profile":
                 return self._run_profile(body)
             if path == "/api/tune-flow":
@@ -619,6 +651,12 @@ def make_handler(app: StudioApp):
                 except FlowError as e:
                     return self._error(e.status, e.message)
                 return self._json(200, {"id": ident})
+            if path == "/api/mytune":
+                return self._mytune_start(body)
+            if path == "/api/mytune/cancel":
+                if app.mytune and app.mytune.cancel():
+                    return self._json(200, {"ok": True})
+                return self._error(409, "No tune for your workload is running.")
             if path == "/api/notes":
                 return self._notes(body)
             if path == "/api/settings/apply":

@@ -288,6 +288,10 @@ def main():
                 record("workload: the closest preset is the browser agent", "Browser agent" in chip, chip.replace("\n", " ")[:80])
                 record("workload: the page says the preset shapes are assumed",
                        "assumed" in page.locator("section#view-workload").inner_text())
+                page.wait_for_selector("section#view-workload .mytune button.btn", timeout=8000)
+                mt = page.locator("section#view-workload .mytune").inner_text()
+                record("workload: the tune card shows the plan, the start button and the Settings link",
+                       "Start the tune" in mt and "Settings" in mt and "Quick" in mt, mt.replace("\n", " ")[:80])
                 page.screenshot(path=str(out / "workload-light.png"), full_page=True)
                 page.close()
             finally:

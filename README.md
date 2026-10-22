@@ -153,7 +153,33 @@ The screenshots show the real data of one PC (RTX 5070 Ti 16 GB, Ryzen 7 5800X3D
 - **The shapes of the presets are assumed. They are not measured.** The time split of a preset is an estimate from the
   speeds in your own log.
 - A short list of ideas for your workload. Each idea says what it is based on. None of them is a measured gain.
-- The view only reads. It writes no file and starts no run.
+- This part of the view only reads. The tune card below it sends requests (see the next section).
+
+### Tune for my workload
+
+A tune that measures your workload, not a fixed prompt. It is a card in the Workload view.
+
+1. **Quiet check.** It waits until the engine log shows no request for 90 s. If another client keeps using Strata, it
+   stops and says so.
+2. **Shapes.** It takes three requests from your log (spread by the number of new tokens read) or one preset. It builds
+   test prompts of the same size from plain filler text and asks the model to copy a passage, so the reply has the
+   logged length. **The text is not yours.** The Studio never sends your prompts. The size of the work is real. How well
+   drafts work on your own text is not measured.
+3. **Only settings that do not change the answer.** The per-request keys `pcie_frac` and `spec_min_p`. The engine
+   verifies every draft and expert placement does not choose the token. The Studio still compares the reply text of
+   each try with the reply text of the current settings. A try with another text is never applied. Settings that
+   change the answers (thinking budget, route tail skip) are **not** tuned. They are in Settings, for you to set.
+4. **Statistics.** Rounds in turns: the current settings twice (A/A: the noise of this PC) and each candidate once, in
+   a random order each round. At least 5 rounds. A candidate wins when the 95% interval of its paired median change
+   is wholly on the better side, and the change is larger than the noise and larger than 2%. A round where another
+   request reached Strata, or where the engine reused a prompt, is dropped and replaced.
+5. **Closed loop (optional).** With "Write the result": a dated copy of the config (`<config>.bak-pre-mytune-<time>`),
+   the write, a restart (`--restart-cmd "systemctl --user restart strata"`, split into words, no shell), a wait for
+   `/health`, then the same rounds again (new config against the old values). If the old values are faster, the copy
+   goes back and Strata restarts. Without `--restart-cmd` the Studio writes the config and says "Restart Strata".
+
+A tune sends requests to Strata for some minutes. The card shows the estimate before you start. `POST /api/mytune`
+needs `"confirm": true`; `GET /api/mytune/plan` and `GET /api/mytune` read.
 
 ### Settings
 

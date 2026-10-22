@@ -124,6 +124,9 @@ class FakeStrata:
                      "report": None, "note": None}
         self.runs_done = 0
         self.tune_done_pending_reload = 0
+        # the streamed chat: (prompt tok/s, reply tok/s) for the request's strata_tune; the tunes whose reply text differs
+        self.chat_speeds = lambda tune: (2000.0, 80.0)
+        self.chat_differs = lambda tune: False
         self.settings_doc = {"file": "strata-swift-1.5-iq3_s.json", "loaded": True, "settings": [
             {"id": "pcie_frac", "name": "--pcie-frac", "kind": "arg", "loaded_now": "0.55", "next_load": None,
              "run_config": None, "calibrated": True, "edit": None, "about": "x"},
@@ -219,7 +222,7 @@ class FakeStrata:
                         return fake.post_run(self)
                     return fake.post_tune(self)
                 if path == "/v1/chat/completions":
-                    return fake.post_chat(self)
+                    return fake.post_chat(self, body)
                 if path in ("/unload", "/load"):            # Strata 0.1.44.1: JSON only, and no foreign Origin
                     if not self.headers.get("Content-Type", "").startswith("application/json"):
                         return self._reply(415, {"error": {"message": "send application/json"}})
@@ -344,7 +347,7 @@ class FakeStrata:
                 self.tune_done_pending_reload = 0
             self.loaded = False
 
-    def post_chat(self, h):
+    def post_chat(self, h, body=None):
         with self.lock:
             if self.tune["state"] == "running":
                 return h._reply(503, {"error": {"message": "the model is busy (tuning)"}}, {"Retry-After": "0"})
@@ -352,8 +355,42 @@ class FakeStrata:
                 self.tune_done_pending_reload -= 1
                 return h._reply(503, {"error": {"message": "loading"}}, {"Retry-After": "0"})
             self.loaded = True
-            self.last = request_doc(prompt_tokens=18, generated=8, prompt_ms=210.0, decode_ms=95.0, adapt=7.0)
-        h._reply(200, {"id": "x", "choices": [{"message": {"role": "assistant", "content": "OK"}}]})
+        body = body if isinstance(body, dict) else {}
+        if not body.get("stream"):
+            with self.lock:
+                self.last = request_doc(prompt_tokens=18, generated=8, prompt_ms=210.0, decode_ms=95.0, adapt=7.0)
+            return h._reply(200, {"id": "x", "choices": [{"message": {"role": "assistant", "content": "OK"}}]})
+        # a streamed request, as the replay sends it: 1.3 tokens a word; the reply copies the passage if there is one
+        prompt = str(((body.get("messages") or [{}])[-1]).get("content") or "")
+        tune = body.get("strata_tune") or {}
+        ptoks = 15 + round(len(prompt.split()) * 1.3)
+        head = "Copy the following passage word for word. Then stop.\n\n"
+        reply = prompt.split(head, 1)[1].split() if head in prompt else ["OK"]
+        reply = reply[:max(1, int(int(body.get("max_tokens") or 16) / 1.3))]
+        if self.chat_differs(tune):
+            reply = reply + ["extra"]
+        ctoks = round(len(reply) * 1.3)
+        p_tps, d_tps = self.chat_speeds(tune)
+        pms, dms = ptoks / p_tps * 1000, ctoks / d_tps * 1000
+        with self.lock:
+            self.last = request_doc(prompt_tokens=ptoks, generated=ctoks, prompt_ms=pms, decode_ms=dms, adapt=7.0)
+        h.send_response(200)
+        h.send_header("Content-Type", "text/event-stream")
+        h.send_header("Connection", "close")
+        h.end_headers()
+        h.close_connection = True
+
+        def sse(doc):
+            try:
+                h.wfile.write(b"data: " + (doc if isinstance(doc, bytes) else json.dumps(doc).encode()) + b"\n\n")
+            except OSError:                                  # the client went away (a cancelled replay)
+                pass
+        for w in reply:
+            sse({"choices": [{"delta": {"content": w + " "}}]})
+        sse({"choices": [], "usage": {"prompt_tokens": ptoks, "completion_tokens": ctoks},
+             "timings": {"prompt_n": ptoks, "cache_n": 0, "prompt_ms": round(pms, 1), "predicted_n": ctoks,
+                         "predicted_ms": round(dms, 1), "draft_n": 10, "draft_n_accepted": 8}})
+        sse(b"[DONE]")
 
     # ---------------------------------------------------------------------------------- test helpers
     def set_last(self, doc):

@@ -109,9 +109,9 @@
       body.push(el('p', { class: 'note', text: 'Reading the engine log…' }));
     } else if (!doc.mine) {
       body.push(el('p', { class: 'note', text: doc.note || 'No request is available.' }));
-      body.push(presetCard(doc));
+      body.push(presetCard(doc), S.mytune.card(A));
     } else {
-      body.push(tiles(doc.mine), timeCard(doc.mine), leverCard(doc), presetCard(doc));
+      body.push(tiles(doc.mine), timeCard(doc.mine), leverCard(doc), presetCard(doc), S.mytune.card(A));
       body.push(el('p', { class: 'note', text: `The log holds ${S.int(doc.found)} requests in its last 8 MiB. The log may include requests from the profile and the tune.` }));
     }
     S.fill(sec, ...body);
