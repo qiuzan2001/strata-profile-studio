@@ -23,9 +23,12 @@ class Changes(unittest.TestCase):
     def test_a_zero_base_is_skipped(self):
         self.assertEqual(abtest.paired_changes([0.0, 10.0], [1.0, 12.0]), [0.2])
 
-    def test_noise_floor_is_the_largest_a_a_difference(self):
-        self.assertAlmostEqual(abtest.noise_floor([10, 10, 10], [10.2, 9.7, 10.1]), 0.03)
+    def test_noise_floor_is_the_median_a_a_difference(self):
+        self.assertAlmostEqual(abtest.noise_floor([10, 10, 10], [10.2, 9.7, 10.1]), 0.02)
         self.assertEqual(abtest.noise_floor([], []), 0.0)
+
+    def test_one_wild_round_does_not_set_the_floor(self):
+        self.assertAlmostEqual(abtest.noise_floor([10] * 5, [10.1, 9.9, 10.1, 10.0, 16.0]), 0.01)
 
 
 class Verdict(unittest.TestCase):

@@ -260,6 +260,10 @@ class MyTune:
             v["median_ms"] = _median(m["scores"][name])
             out["arms"][name] = v
         out["base_median_ms"] = _median(base)
+        # every round of every arm, so that a noisy run can be read afterwards (the order is the order of the rounds)
+        out["per_round"] = {n: [{"score_ms": o["score_ms"], "generated": o["generated"], "decode_tok_s": o["decode_tok_s"],
+                                 "drafts_accepted": o["drafts_accepted"], "wall_s": o["wall_s"], "hash": o["hash"][:8]}
+                                for o in m["stats"][n]] for n in m["names"]}
         return out
 
     # ------------------------------------------------------------------------------------------ the run
@@ -349,7 +353,7 @@ class MyTune:
             best = None
         self._stage("measure", "done")
         result = {"shapes": shapes, "rounds": m["rounds"], "spoiled": m["spoiled"], "current": cur, "floor": v["floor"],
-                  "output_check": v["output_check"], "base_median_ms": v["base_median_ms"], "arms": v["arms"],
+                  "output_check": v["output_check"], "base_median_ms": v["base_median_ms"], "arms": v["arms"], "per_round": v["per_round"],
                   "excluded_for_output": excluded, "combined": combo, "winner": None, "applied": None,
                   "verify": None, "rolled_back": False}
         if best is None:

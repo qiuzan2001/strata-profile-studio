@@ -5,7 +5,7 @@ One measure is one number per round (for example the seconds that a replay of th
 minute of the PC hits every arm. The Studio compares an arm with the current settings round by round (paired), and it
 keeps a change only when the change is larger than the noise of this PC.
 
-The noise floor comes from an A/A test: two arms with the same settings. The largest paired difference between them is
+The noise floor comes from an A/A test: two arms with the same settings. The median paired difference between them is
 what the PC does by itself.
 
 No random number is hidden: the order and the bootstrap take a seed.
@@ -45,9 +45,11 @@ def _median_ci(values: list[float], level: float = 0.95, seed: int = 1) -> tuple
 
 
 def noise_floor(a1: list[float], a2: list[float]) -> float:
-    """The largest paired difference between two arms with the same settings, as a fraction. 0 for no pair."""
+    """The typical paired difference between two arms with the same settings, as a fraction: the median of the absolute
+    differences. 0 for no pair. The median, not the largest, because one spoiled round must not raise the bar for all
+    the rest; the interval of the verdict already guards against a change that one round alone made."""
     d = paired_changes(a1, a2)
-    return max((abs(x) for x in d), default=0.0)
+    return statistics.median(abs(x) for x in d) if d else 0.0
 
 
 def verdict(base: list[float], cand: list[float], floor: float, lower_is_better: bool = True, min_gain: float = 0.0,

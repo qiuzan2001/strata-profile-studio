@@ -122,7 +122,7 @@
     ];
     out.push(S.table(cols, rows));
     out.push(el('p', { class: 'note', text: `${res.rounds} clean rounds${res.spoiled ? `, ${res.spoiled} dropped` : ''}. `
-      + `The noise of this PC (two copies of the current settings): ${S.pct(res.floor, 1)}. A change must be larger than that and larger than 2%.`
+      + `The noise of this PC (the median difference between two copies of the current settings): ${S.pct(res.floor, 1)}. A change must be larger than that and larger than 2%.`
       + (res.output_check === 'unreliable' ? ' The text of the two copies of the current settings differed, so the text check was not used.' : '') }));
     if (res.winner) {
       out.push(el('p', { class: 'verdict', text: `Best: ${res.winner.name}, ${S.pct(res.winner.gain, 1)} faster on the standard test.` }));

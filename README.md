@@ -173,7 +173,8 @@ short prompt, and keeps a change only when it beats the noise of this PC.
    change the answers (thinking budget, route tail skip) are **not** tuned. They are in Settings, for you to set.
 4. **Statistics.** Rounds in turns: the current settings twice (A/A: the noise of this PC) and each candidate once, in
    a random order each round. At least 5 rounds. A candidate wins when the 95% interval of its paired median change
-   is wholly on the better side, and the change is larger than the noise and larger than 2%. A round where another
+   is wholly on the better side, and the change is larger than the noise (the median difference between the two copies of the current settings) and larger than 2%.
+   The result keeps the score of every round (`per_round` in `/api/mytune`). A round where another
    request reached Strata, or where the engine reused a prompt, is dropped and replaced.
 5. **Closed loop (optional).** With "Write the result": a dated copy of the config (`<config>.bak-pre-mytune-<time>`),
    the write, a restart (`--restart-cmd "systemctl --user restart strata"`, split into words, no shell), a wait for
