@@ -17,10 +17,15 @@ class Shapes(unittest.TestCase):
         self.assertEqual(replay.pick_shapes([]), [])
 
     def test_shapes_spread_over_the_reads_and_are_capped(self):
-        reqs = [req(r, 100) for r in (1000, 2000, 4000, 8000, 50000)]
-        s = replay.pick_shapes(reqs, k=3)
-        self.assertEqual([x["read"] for x in s], [1000, 4000, replay.MAX_READ])
+        reqs = [req(r, 100) for r in (1000, 2000, 4000, 8000, 80000)]
+        s = replay.pick_shapes(reqs, k=3)                                  # groups: [1000] [2000, 4000] [8000, 80000]
+        self.assertEqual([x["read"] for x in s], [1000, 3000, replay.MAX_READ])
         self.assertEqual([x["capped"] for x in s], [False, False, True])
+
+    def test_a_shape_takes_the_median_reply_of_its_group_not_one_request_s(self):
+        reqs = [req(1000, g) for g in (10, 20, 900)] + [req(9000, g) for g in (100, 200, 300)]
+        s = replay.pick_shapes(reqs, k=2)
+        self.assertEqual([(x["read"], x["generated"]) for x in s], [(1000, 20), (9000, 200)])
 
     def test_generated_is_capped(self):
         s = replay.pick_shapes([req(5000, 5000)], k=1)
