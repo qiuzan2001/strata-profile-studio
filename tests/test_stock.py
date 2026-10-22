@@ -71,15 +71,13 @@ class StockCase(unittest.TestCase):
 
 
 class Detection(StockCase):
-    def test_stock_status_and_the_exact_message(self):
+    def test_stock_status_has_no_banner_message(self):
         s = self.make()
         wait_for(lambda: s.poller.status == "stock", what="stock mode")
         st = request(s, "GET", "/api/state")[2]["strata"]
         self.assertEqual(st["status"], "stock")
-        self.assertEqual(st["message"], "This Strata build has no profile routes (Strata 0.1.44.1 as released). They "
-                                        "are in Strata PR #2661. The Studio does that work itself: see Settings.")
+        self.assertIsNone(st["message"])                                  # stock mode is the normal case: no banner
         self.assertTrue(st["stock"])
-        self.assertNotIn("\"profile\": true", st["message"])           # that key does nothing on a stock build
         self.assertIsNot(st["profile"], False)                           # not "profiling off"
 
     def test_health_without_profile_is_normal(self):

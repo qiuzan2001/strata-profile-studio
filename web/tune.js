@@ -99,11 +99,9 @@
       live.steps.push({ key: st.key, li, dot, time, msg });
       stepper.appendChild(li);
     }
-    const bars = S.LiveBars(stages.map((s) => s.key), { fmt: S.dur });
-    live.stageBars = bars;
     live.log = el('pre', { class: 'log', text: '' });
     return S.card({ q: 'Tune flow timeline', sub: 'each stage on one time axis · the calibration unloads the model: Strata answers 503 meanwhile', cls: 'span3' },
-      stepper, axis, gantt, el('div', { class: 'two-col' }, el('div', null, el('h4', { text: 'Stage duration' }), bars.node), el('div', null, el('h4', { text: 'Newest output' }), live.log)));
+      stepper, axis, gantt, el('h4', { text: 'Newest output' }), live.log);
   }
   function updateTimeline(t, running) {
     const stages = t.stages || [];
@@ -124,7 +122,6 @@
       S.setText(g.val, isNum(st.elapsed_s) ? S.dur(st.elapsed_s) : '');
       at += st.elapsed_s || 0;
     }
-    if (live.stageBars) live.stageBars.update(stages.filter((s) => isNum(s.elapsed_s)).map((s) => ({ key: s.key, label: STAGE_LABEL[s.key] || s.key, value: s.elapsed_s, text: S.dur(s.elapsed_s), cls: s.key === 'tune' ? 'k-adapt' : 'k-bar' })));
     if (live.log) S.setText(live.log, (t.lines || linesOf(t)).slice(-8).join('\n') || (running ? 'waiting for output …' : ''));
   }
 
@@ -237,8 +234,7 @@
 
   async function gapCard(A, t, gains) {
     const box = el('div', { class: 'gap' }, el('p', { class: 'loading', text: 'Reading the profile before and after the tune …' }));
-    const forestBox = el('div');
-    const card = S.card({ q: 'Tune result per workload', sub: 'the calibration\'s own measure against the profile before and after the tune', cls: 'span3 gap-card' }, box, forestBox);
+    const card = S.card({ q: 'Tune result per workload', sub: 'the calibration\'s own measure against the profile before and after the tune', cls: 'span3 gap-card' }, box);
     if (!t.before_report || !t.after_report) {
       S.fill(box, el('p', { class: 'empty-line', text: t.state === 'running' ? 'The profile after the tune has not run yet.' : 'This tune has no profile before and after.' }));
       return card;
@@ -284,10 +280,6 @@
       S.fill(box, grid, el('div', { class: 'legend' },
         el('span', { class: 'lg' }, el('i', { class: 'sw dot calib' }), 'calibration measure'), el('span', { class: 'lg' }, el('i', { class: 'sw dot same' }), 'profile, inside the noise'),
         el('span', { class: 'lg' }, el('i', { class: 'sw dot worse' }), 'slower'), el('span', { class: 'lg' }, el('i', { class: 'sw dot better' }), 'faster')), decide);
-      const frows = [];
-      for (const r of c.rows.filter((q) => q.group === 'agent' && q.metric === 'decode tok/s')) frows.push({ group: 'agent turns', label: `turn ${r.key}`, pct: r.pct, floor: r.floor * 100, assumed: r.floor_assumed, state: r.state, ab: `${S.num(r.a, 1)} to ${S.num(r.b, 1)} tok/s` });
-      for (const r of c.rows.filter((q) => q.group === 'prompt' && q.metric === 'prompt tok/s')) frows.push({ group: 'prompt reads', label: r.key, pct: r.pct, floor: r.floor * 100, assumed: r.floor_assumed, state: r.state, ab: `${S.int(r.a)} to ${S.int(r.b)} tok/s` });
-      S.fill(forestBox, el('h4', { text: 'Change per agent turn and per prompt read' }), S.forest(frows));
     }).catch((e) => S.fill(box, el('p', { class: 'empty-line', text: e.message })));
     return card;
   }
@@ -314,13 +306,13 @@
 
   function historyCards(A, shownId) {
     const tunes = A.tunes.slice().reverse();                 // oldest first for the chart
-    const rateBars = S.bars(tunes.map((t) => ({ label: S.clock(t.started_at, true), value: t.tok_s, hl: t.id === shownId, onclick: () => S.go(`#tune/${t.id}`), note: t.summary || '' })), { sort: false, fmt: (v) => S.num(v, 1), unit: 'tok/s', empty: 'No tune recorded yet.' });
     const spark = (vals) => { const sp = S.sparkline('hist'); sp.update(vals); return sp; };
     const gains = tunes.map((t) => { const g = calibrationGain(t.candidates); return g.length ? Math.max(...g.map((x) => x.pct)) : 0; });
     const cols = [
       { label: 'Started', get: (t) => S.clock(t.started_at, true) }, { label: 'Result', get: (t) => (t.outcome === 'failed' ? `failed at ${t.failed_stage}` : t.outcome) },
       { label: 'Duration', get: (t) => S.dur(t.ended_at - t.started_at) },
       { label: 'Calibration gain', get: (t) => { const g = calibrationGain(t.candidates); return g.length ? `${S.signed(Math.max(...g.map((x) => x.pct)), 1, ' %')}` : 'none kept'; } },
+      { label: 'Best rate', num: true, get: (t) => (isNum(t.tok_s) ? `${S.num(t.tok_s, 1)} tok/s` : '–'), title: 'Decode speed of the best candidate, short chat' },
       { label: 'Gain over tunes', get: () => spark(gains) },
       { label: 'Settings changed', num: true, get: (t) => String(((t.settings && t.settings.rows) || []).filter((r) => r.changed).length) },
       { label: 'Kept', get: (t) => t.summary || '–' },
@@ -328,9 +320,8 @@
       { label: 'Note', get: (t) => t.note || '' },
     ];
     return [
-      S.card({ q: 'Tune history', sub: `${A.tunes.length} tune${A.tunes.length === 1 ? '' : 's'} recorded by the Studio · select a tune to open it`, cls: 'span2' },
+      S.card({ q: 'Tune history', sub: `${A.tunes.length} tune${A.tunes.length === 1 ? '' : 's'} recorded by the Studio · select a tune to open it`, cls: 'span3' },
         A.tunes.length ? S.table(cols, A.tunes.map((t) => Object.assign({}, t, { _onclick: () => S.go(`#tune/${t.id}`), _cls: t.id === shownId ? 'sel' : '' }))) : el('p', { class: 'empty-line', text: 'No tune recorded yet.' })),
-      S.card({ q: 'Calibration rate per tune', sub: 'decode speed of the best candidate, tok/s · short chat' }, rateBars),
     ];
   }
 
@@ -378,7 +369,8 @@
     const why = A.cannotTune();
     const running = A.flow && A.flow.state === 'running';
     const head = el('div', { class: 'view-head' }, el('h2', { text: 'Tune' }),
-      el('span', { class: 'muted', text: 'profile before, calibration, model load, profile after, comparison' }), el('span', { class: 'grow' }),
+      el('span', { class: 'muted', text: 'profile before, calibration, model load, profile after, comparison · to tune for your own requests, use ' }),
+      el('a', { href: '#workload', text: 'Workload' }), el('span', { class: 'grow' }),
       S.button(running ? 'Tune in progress' : 'Tune this PC', () => confirmTune(A), 'primary', { disabled: !!why, title: why || 'The calibration unloads the model.' }));
     const parts = [head];
     if (why && !running && !(A.strata().tune && A.strata().tune.state === 'running')) parts.push(el('p', { class: 'note', text: `Tune not possible now: ${why}` }));

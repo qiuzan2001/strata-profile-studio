@@ -468,8 +468,8 @@ def main():
                           "profile-off": "Profiling is off", "key": "Strata needs an API key", "unloaded": "The model is not loaded",
                           "unreachable": "Strata does not answer", "tuning-elsewhere": "Strata runs a tune",
                           "read-only": "read-only", "host-off": "Host readings are off",
-                          "stock": "This Strata build has no profile routes"}[name]
-                if name == "read-only":
+                          "stock": "stock Strata"}[name]
+                if name in ("read-only", "stock"):
                     text += page.evaluate("document.querySelector('header').innerText")
                     page.goto(f"{sc.base}/#runs")
                     time.sleep(2.5)

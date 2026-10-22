@@ -13,7 +13,6 @@ from pathlib import Path
 
 from . import requests as requests_mod, settings as settings_mod
 from .requests import REQUEST_KEYS, kind_of
-from .stock import MSG_STOCK
 from .strata import StrataError
 
 LIVE_MAX = 300
@@ -158,7 +157,7 @@ class Poller:
             elif self.profile is False:
                 self.status, self.message = "profile_off", MSG_PROFILE_OFF
             elif self.stock:
-                self.status, self.message = "stock", " ".join(x for x in (MSG_STOCK, self.mismatch) if x)
+                self.status, self.message = "stock", self.mismatch      # stock mode is the normal case: no banner
             else:
                 self.status, self.message = "ok", self.mismatch
 

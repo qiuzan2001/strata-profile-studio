@@ -162,7 +162,7 @@
       render(A);
     }, 'primary', { disabled: !!(d.env_complete || !d.config || A.readOnly()) });
     const again = S.button('Read again', () => { stockDoc = null; render(A); }, 'small');
-    return S.card({ q: 'Timing lines', sub: 'Strata without the /profile routes (0.1.44.1 as released): the Studio reads the time per component from the engine log', cls: 'span3 stock-card' },
+    return S.card({ q: 'Timing lines', sub: 'Strata has no /profile routes: the Studio reads the time per component from the engine log', cls: 'span3 stock-card' },
       el('table', { class: 'stock-table' }, el('tbody', null, rows.map(([k, v]) => el('tr', null, el('th', { text: k }), el('td', { text: v }))))),
       notes.map((n) => el('p', { class: 'note', text: n })),
       el('div', { class: 'row-buttons' }, add, again));

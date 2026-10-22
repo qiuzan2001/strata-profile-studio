@@ -4,6 +4,13 @@ One PC measured the numbers below: RTX 5070 Ti 16 GB, Ryzen 7 5800X3D, Swift 1.5
 
 ## Unreleased
 
+- **Stock banner removed:** the top banner "This Strata build has no profile routes (Strata 0.1.44.1 as released) ..." was
+  out of date. Strata PRs #2660 and #2661 were closed unmerged, and every release (0.2.2 too) has no profile routes. Stock
+  mode is now the normal case. The header still shows "stock Strata". A banner appears only for a version mismatch.
+- **Fewer repeated cards:** with two runs, Compare shows the two-run answer first and no longer repeats the change chart,
+  the settings table and the window composition (they stay for three or more runs). Tune drops the stage-duration bars
+  (the time axis shows them), the second change chart (the full comparison is one click away) and the rate card (the
+  history table has a "Best rate" column).
 - **Workload view:** reads the engine log and shows what the requests of this PC look like (prompt length, reused share,
   reply length, speeds, the split of the time). It compares them with five scenario presets and names the closest one.
   The shapes of the presets are assumed, not measured. `GET /api/workload?last=N&min_prompt=N` gives the same data.

@@ -279,7 +279,7 @@
     } else if (s.status === 'profile_off') {
       items.push(['warn', 'Profiling is off in Strata. The Studio shows speeds, but not the time per component.', `Add "profile": true to ${cfg} and start Strata again.`, [['Settings', () => S.go('#settings')]]]);
     } else if (s.status === 'stock') {
-      items.push(['idle', s.message || 'This Strata build has no profile routes.', '', A.route.view === 'settings' ? null : [['Settings', () => S.go('#settings')]]]);
+      if (s.message) items.push(['warn', s.message, '', null]);         // stock mode is the normal case: only a mismatch is news
     }
     if (s.status === 'ok' && s.message) items.push(['warn', s.message, '', null]);
     if (A.state && s.status !== 'unreachable' && s.loaded === false && !(s.tune && s.tune.state === 'running'))

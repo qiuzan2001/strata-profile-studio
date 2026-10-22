@@ -191,25 +191,29 @@
       grouped(WORKLOADS, runs, dec, (w) => floorOf('decode', w, 'decode tok/s'), (v) => S.num(v, 1), 'tok/s'), legend));
     cards.push(S.card({ q: 'Prompt read speed per prompt size', sub: 'tok/s · higher is better · grey band: the reference ± its noise floor' },
       grouped(READS, runs, read, (g) => floorOf('prompt', g, 'prompt tok/s'), S.int, 'tok/s')));
-    // change against the reference
-    const frows = [];
-    for (const w of WORKLOADS) for (const r of list) {
-      if (!r.cmp) continue;
-      const row = r.cmp.rows.find((x) => x.group === 'decode' && x.key === w && x.metric === 'decode tok/s');
-      if (row) frows.push({ group: w, label: r.name, pct: row.pct, floor: row.floor * 100, assumed: row.floor_assumed, state: row.state, ab: `${S.num(row.a, 1)} to ${S.num(row.b, 1)} tok/s`, cls: r.color });
+    // with two runs the two-run section below says it: the change per workload, the settings difference, the window change
+    const twoRuns = sel.length === 2;
+    if (!twoRuns) {
+      // change against the reference
+      const frows = [];
+      for (const w of WORKLOADS) for (const r of list) {
+        if (!r.cmp) continue;
+        const row = r.cmp.rows.find((x) => x.group === 'decode' && x.key === w && x.metric === 'decode tok/s');
+        if (row) frows.push({ group: w, label: r.name, pct: row.pct, floor: row.floor * 100, assumed: row.floor_assumed, state: row.state, ab: `${S.num(row.a, 1)} to ${S.num(row.b, 1)} tok/s`, cls: r.color });
+      }
+      for (const r of list) {
+        if (!r.cmp || !r.cmp.sign || r.cmp.sign.turns < r.cmp.sign.min_turns) continue;
+        const sg = r.cmp.sign;
+        if (sg.p !== null && sg.p <= 0.05) frows.push({ group: 'agent turns, sign test', label: r.name, pct: null, floor: null, state: sg.slower > sg.faster ? 'worse' : 'better', valText: `${Math.max(sg.slower, sg.faster)} of ${sg.turns}`, note: `${Math.max(sg.slower, sg.faster)} of ${sg.turns} turns ${sg.slower > sg.faster ? 'slower' : 'faster'}, p = ${S.num(sg.p, 3)}` });
+      }
+      cards.push(S.card({ q: `Change against the reference (${runs.ref.name})`, sub: 'decode speed, % · grey band: the noise floor · right is faster', cls: 'span2' },
+        frows.length ? S.forest(frows) : el('p', { class: 'empty-line', text: 'Add a second run to compare it with the reference.' })));
     }
-    for (const r of list) {
-      if (!r.cmp || !r.cmp.sign || r.cmp.sign.turns < r.cmp.sign.min_turns) continue;
-      const sg = r.cmp.sign;
-      if (sg.p !== null && sg.p <= 0.05) frows.push({ group: 'agent turns, sign test', label: r.name, pct: null, floor: null, state: sg.slower > sg.faster ? 'worse' : 'better', valText: `${Math.max(sg.slower, sg.faster)} of ${sg.turns}`, note: `${Math.max(sg.slower, sg.faster)} of ${sg.turns} turns ${sg.slower > sg.faster ? 'slower' : 'faster'}, p = ${S.num(sg.p, 3)}` });
-    }
-    cards.push(S.card({ q: `Change against the reference (${runs.ref.name})`, sub: 'decode speed, % · grey band: the noise floor · right is faster', cls: 'span2' },
-      frows.length ? S.forest(frows) : el('p', { class: 'empty-line', text: 'Add a second run to compare it with the reference.' })));
     cards.push(S.card({ q: 'Decode speed per agent turn', sub: 'tok/s · one line per run' }, turnLines(runs)));
-    cards.push(S.card({ q: 'Settings per run', sub: `run config values · highlighted: different from the reference (${runs.ref.name})`, cls: 'span3' }, matrix(runs)));
+    if (!twoRuns) cards.push(S.card({ q: 'Settings per run', sub: `run config values · highlighted: different from the reference (${runs.ref.name})`, cls: 'span3' }, matrix(runs)));
     // window composition per run per workload
     const wmax = Math.max(1, ...list.flatMap((r) => (r.doc.decode || []).map((d) => d.ms_per_window || 0)));
-    cards.push(S.card({ q: 'Decode window composition per run', sub: 'ms per window · lower is better', cls: 'span3' },
+    if (!twoRuns) cards.push(S.card({ q: 'Decode window composition per run', sub: 'ms per window · lower is better', cls: 'span3' },
       el('div', { class: 'win-grid' }, WORKLOADS.map((w) => el('div', { class: 'win-col' }, el('div', { class: 'gbar-title', text: w }),
         list.map((r) => {
           const d = (r.doc.decode || []).find((x) => x.kind === w);
@@ -312,7 +316,8 @@
       pairCards = (await pair(A, x, y, my)) || [];
       if (my !== token) return;
     }
-    S.fill(sec, top, el('div', { class: 'grid' }, cards, pairCards));
+    // two runs: the answer first (the two-run section), then the speeds of both runs; the rest of the cards are for 3 or more
+    S.fill(sec, top, el('div', { class: 'grid' }, ...(pairCards.length ? [pairCards, cards] : [cards])));
     void others;
   }
 
