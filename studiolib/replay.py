@@ -209,10 +209,5 @@ def one_pass(client: Client, shapes: list[dict], sizer: Sizer, tune: dict | None
 
 def from_log(path, last: int = 100, min_prompt: int = 2000) -> list[dict]:
     """The logged requests that the shapes come from, with `read_tokens` (new tokens, not reused)."""
-    reqs = workload.requests_of(workload.tail_lines(path))[-last:]
-    out = []
-    for r in reqs:
-        if r.get("prompt_tokens", 0) < min_prompt:
-            continue
-        out.append({**r, "read_tokens": r["read"]})
-    return out
+    reqs = [r for r in workload.requests_of(workload.tail_lines(path)) if r.get("prompt_tokens", 0) >= min_prompt][-last:]
+    return [{**r, "read_tokens": r["read"]} for r in reqs]

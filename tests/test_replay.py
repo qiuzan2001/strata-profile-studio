@@ -41,6 +41,20 @@ class Shapes(unittest.TestCase):
         self.assertIsNone(replay.shapes_seconds(shapes, None, 50.0))
 
 
+class FromLog(unittest.TestCase):
+    def test_the_filter_comes_before_the_last_n(self):
+        import tempfile
+        from test_workload import line
+        big = [line(20000, 8000, 800, 4000, 8000)] * 3
+        small = [line(300, 0, 20, 100, 100)] * 50               # newer, short requests (probes) must not push the big ones out
+        with tempfile.NamedTemporaryFile("w", suffix=".log") as f:
+            f.write("\n".join(big + small) + "\n")
+            f.flush()
+            out = replay.from_log(f.name, last=5, min_prompt=2000)
+        self.assertEqual(len(out), 3)
+        self.assertEqual(out[0]["read_tokens"], 12000)
+
+
 class Filler(unittest.TestCase):
     def test_same_salt_same_text_and_length(self):
         self.assertEqual(replay.filler(50, "a"), replay.filler(50, "a"))
